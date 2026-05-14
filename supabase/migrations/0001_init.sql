@@ -1,5 +1,12 @@
 -- SCM Issue Intelligence — initial schema
 -- Mirrors the framework's Issue Log + Prioritisation Parameters sheets.
+--
+-- Run this BEFORE seed.sql. If you prefer a single paste, use
+-- supabase/init.sql which concatenates both.
+
+-- pgcrypto is required for gen_random_uuid(). Supabase ships it but the
+-- function lives in the `extensions` schema; this guarantees it is loadable.
+create extension if not exists pgcrypto;
 
 -- ============================================================================
 -- Enum types

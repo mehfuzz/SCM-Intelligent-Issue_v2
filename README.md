@@ -99,12 +99,16 @@ vercel dev             # runs SPA + /api/* together at http://localhost:3000
 
 ## Deploying to Vercel
 
-1. Create a Supabase project, then in the SQL editor run:
-   ```
-   supabase/migrations/0001_init.sql
-   supabase/seed.sql
-   ```
-   (Or use the Supabase CLI: `supabase db push && psql -f supabase/seed.sql ...`.)
+1. Create a Supabase project, then open the SQL Editor and run **one of**:
+   * **Quickest** — paste & run `supabase/init.sql` (this concatenates
+     the migration + seed in the correct order).
+   * Or run them separately, in this order:
+     ```
+     supabase/migrations/0001_init.sql      -- schema first
+     supabase/seed.sql                      -- data second
+     ```
+   The migration must run before the seed; otherwise you'll see
+   `ERROR: relation "app_users" does not exist`.
 2. In Vercel, import this repo. Vercel auto-detects the `vercel.json` build
    spec (`npm install && cd frontend && npm install --legacy-peer-deps && npm run build`).
 3. Add the following **Environment Variables** in Vercel project settings:
