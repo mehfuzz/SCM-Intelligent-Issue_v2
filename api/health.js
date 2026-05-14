@@ -6,21 +6,42 @@
 import { handleOptions, json } from './_lib/http.js';
 import { isConfigured, supabase } from './_lib/supabase.js';
 
-// Decode the role claim from a Supabase JWT (base64url-decode the middle
-// segment). We do not verify the signature — this is a debugging aid only,
-// to catch the very common "pasted the anon key by mistake" mistake.
-function jwtRole(token) {
-  if (!token || typeof token !== 'string') return null;
+// Identify the kind of Supabase key in SUPABASE_SERVICE_ROLE_KEY. We support
+// both formats:
+//   * Legacy JWT keys — middle segment base64-decodes to a JSON payload with a
+//     `role` claim. We look at that.
+//   * New "publishable / secret" keys — they aren't JWTs, but start with a
+//     `sb_publishable_` or `sb_secret_` prefix.
+// This is a debugging aid only; no signatures are verified.
+function classifyKey(token) {
+  if (!token || typeof token !== 'string') return { kind: null, role: null };
+  if (token.startsWith('sb_secret_'))      return { kind: 'new', role: 'secret'      };
+  if (token.startsWith('sb_publishable_')) return { kind: 'new', role: 'publishable' };
   const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
-    const decoded = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
-    return decoded?.role || null;
-  } catch {
-    return null;
+  if (parts.length === 3) {
+    try {
+      const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+      const decoded = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+      return { kind: 'jwt', role: decoded?.role || null };
+    } catch { /* fall through */ }
   }
+  return { kind: 'unknown', role: null };
+}
+
+// Detect the very common "I copied the URL with /rest/v1/ on the end" mistake.
+function checkUrl(raw) {
+  if (!raw) return { url: null, warning: null };
+  const stripped = String(raw).replace(/\/+$/, '');
+  if (/\/rest\/v1(\/|$)/i.test(stripped) ||
+      /\/auth\/v1(\/|$)/i.test(stripped) ||
+      /\/storage\/v1(\/|$)/i.test(stripped)) {
+    return {
+      url: raw,
+      warning: `SUPABASE_URL must be the project root (e.g. https://<ref>.supabase.co), not an API sub-path. Yours currently has a service path appended.`,
+    };
+  }
+  return { url: raw, warning: null };
 }
 
 export default async function handler(req, res) {
@@ -31,8 +52,14 @@ export default async function handler(req, res) {
   if (!process.env.SUPABASE_URL)              missing.push('SUPABASE_URL');
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
 
-  const detectedRole = jwtRole(process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const wrongKey = configured && detectedRole && detectedRole !== 'service_role';
+  const { kind: keyKind, role: keyRole } = classifyKey(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const wrongKey =
+    configured && (
+      (keyKind === 'jwt' && keyRole && keyRole !== 'service_role') ||
+      (keyKind === 'new' && keyRole !== 'secret')
+    );
+
+  const urlInfo = checkUrl(process.env.SUPABASE_URL);
 
   let dbReachable = false;
   let userCount   = null;
@@ -56,12 +83,14 @@ export default async function handler(req, res) {
   let hint;
   if (!configured) {
     hint = 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel project settings, then redeploy.';
+  } else if (urlInfo.warning) {
+    hint = `${urlInfo.warning} Fix the env var in Vercel and redeploy.`;
+  } else if (wrongKey) {
+    hint = `SUPABASE_SERVICE_ROLE_KEY appears to be a "${keyRole}" key, not a service-role / secret key. Anon / publishable keys are blocked by RLS and silently return 0 rows. Replace the env var with the service_role secret from Supabase → Project Settings → API, then redeploy.`;
   } else if (!dbReachable) {
     hint = 'Supabase env vars are set, but the API could not reach the database. Check the URL / key and that the project is not paused.';
-  } else if (wrongKey) {
-    hint = `SUPABASE_SERVICE_ROLE_KEY appears to be the "${detectedRole}" key, not the service_role key. Anon keys are blocked by RLS and silently return 0 rows. Replace the env var with the service_role key from Supabase → Project Settings → API, then redeploy.`;
   } else if ((userCount ?? 0) === 0) {
-    hint = 'Connected to Supabase but tables are empty. Either run the seed against this project, or update SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in Vercel to point at the project where you already loaded the data.';
+    hint = 'Connected to Supabase but the app_users table is empty in the project the API points at. Either run the seed against this project, or update SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY to the project where you loaded the data.';
   } else {
     hint = 'OK';
   }
@@ -70,7 +99,9 @@ export default async function handler(req, res) {
     ok: true,
     supabaseConfigured: configured,
     supabaseUrl: process.env.SUPABASE_URL || null,
-    serviceRoleKeyDetectedAs: detectedRole,
+    supabaseUrlWarning: urlInfo.warning,
+    serviceRoleKeyKind: keyKind,         // 'jwt' | 'new' | 'unknown' | null
+    serviceRoleKeyDetectedAs: keyRole,   // 'service_role' | 'anon' | 'secret' | 'publishable' | null
     wrongKey,
     missingEnvVars: missing,
     dbReachable,
