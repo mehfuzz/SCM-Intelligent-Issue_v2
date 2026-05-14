@@ -1,5 +1,6 @@
 // Mock data for Airtel SCM Issue Intelligence & Workflow Management Portal
 // Frontend-only — used to populate dashboards, tables, forms, charts.
+// Data model mirrors the Framework "Issue Log" + "Prioritisation Parameters" sheets.
 
 export const ROLES = {
   SUBMITTER: 'Submitter',
@@ -10,407 +11,464 @@ export const ROLES = {
 };
 
 export const MOCK_USERS = [
-  {
-    id: 'u1',
-    name: 'Ravi Kumar',
-    email: 'ravi.kumar@airtel.in',
-    password: 'demo123',
-    role: ROLES.SUBMITTER,
-    department: 'SCM Operations',
-    avatarInitials: 'RK',
-  },
-  {
-    id: 'u2',
-    name: 'Priya Sharma',
-    email: 'priya.sharma@airtel.in',
-    password: 'demo123',
-    role: ROLES.COE_ADMIN,
-    department: 'SCM Center of Excellence',
-    avatarInitials: 'PS',
-  },
-  {
-    id: 'u3',
-    name: 'Amit Singh',
-    email: 'amit.singh@airtel.in',
-    password: 'demo123',
-    role: ROLES.POC_OWNER,
-    department: 'Procurement Tech',
-    avatarInitials: 'AS',
-  },
-  {
-    id: 'u4',
-    name: 'Neeta Rao',
-    email: 'neeta.rao@airtel.in',
-    password: 'demo123',
-    role: ROLES.LEADERSHIP,
-    department: 'SCM Leadership',
-    avatarInitials: 'NR',
-  },
-  {
-    id: 'u5',
-    name: 'System Admin',
-    email: 'admin@airtel.in',
-    password: 'demo123',
-    role: ROLES.SYSTEM_ADMIN,
-    department: 'IT Platform',
-    avatarInitials: 'SA',
-  },
+  { id: 'u1', name: 'Ravi Kumar',     email: 'ravi.kumar@airtel.in',   password: 'demo123', role: ROLES.SUBMITTER,   department: 'SCM Operations',           avatarInitials: 'RK' },
+  { id: 'u2', name: 'Priya Sharma',   email: 'priya.sharma@airtel.in', password: 'demo123', role: ROLES.COE_ADMIN,   department: 'SCM Center of Excellence', avatarInitials: 'PS' },
+  { id: 'u3', name: 'Amit Singh',     email: 'amit.singh@airtel.in',   password: 'demo123', role: ROLES.POC_OWNER,   department: 'Procurement Tech',         avatarInitials: 'AS' },
+  { id: 'u4', name: 'Neeta Rao',      email: 'neeta.rao@airtel.in',    password: 'demo123', role: ROLES.LEADERSHIP,  department: 'SCM Leadership',           avatarInitials: 'NR' },
+  { id: 'u5', name: 'System Admin',   email: 'admin@airtel.in',        password: 'demo123', role: ROLES.SYSTEM_ADMIN,department: 'IT Platform',              avatarInitials: 'SA' },
+  { id: 'u6', name: 'Kushal Soni',    email: 'kushal.soni@airtel.in',  password: 'demo123', role: ROLES.POC_OWNER,   department: 'SCM CoE',                  avatarInitials: 'KS' },
+  { id: 'u7', name: 'Shikha Aggarwal',email: 'shikha@airtel.in',       password: 'demo123', role: ROLES.POC_OWNER,   department: 'SCM CoE',                  avatarInitials: 'SA' },
+  { id: 'u8', name: 'Rajesh Kansal',  email: 'rajesh.kansal@airtel.in',password: 'demo123', role: ROLES.SUBMITTER,   department: 'Infra Procurement',        avatarInitials: 'RK' },
+  { id: 'u9', name: 'Akram Raza',     email: 'akram.raza@airtel.in',   password: 'demo123', role: ROLES.SUBMITTER,   department: 'Material Management',      avatarInitials: 'AR' },
 ];
 
-export const MODULES = ['Procurement', 'Inventory', 'Logistics', 'Vendor Management', 'Warehouse', 'Demand Planning'];
-export const FUNCTIONS = ['Sourcing', 'Contracting', 'PO Processing', 'Receiving', 'Invoice Matching', 'Returns'];
-export const CATEGORIES = ['Process Gap', 'Bug', 'Compliance Risk', 'Automation Opportunity', 'Dashboard / Report', 'New Development'];
-export const SUBCATEGORIES = {
-  'Process Gap': ['Manual Workaround', 'Missing Step', 'Approval Delay'],
-  'Bug': ['UI Defect', 'Data Mismatch', 'Performance', 'Integration'],
-  'Compliance Risk': ['Audit Gap', 'Regulatory', 'Policy Violation'],
-  'Automation Opportunity': ['RPA', 'Workflow', 'Notification', 'Reporting'],
-  'Dashboard / Report': ['New KPI', 'Data Drill-down', 'Export'],
-  'New Development': ['Feature Request', 'API', 'Mobile'],
+// Aligned with user-supplied SCM module list
+export const MODULES = [
+  'NFA', 'SOW', 'Sourcing', 'GBPA', 'Contract',
+  'PR', 'PO', 'Downstream', 'Vendor Onboarding', 'Master Data',
+];
+
+// Aligned with user-supplied function list
+export const FUNCTIONS = [
+  'Network', 'IT', 'Infra', 'COE', 'DTH', 'Nxtra', 'Service',
+  'Material Management', 'ToCo', 'B2B', 'Real Estate', 'Bharti Foundation', 'Content',
+];
+
+// From Excel "Issue Taxonomy" sheet
+export const CATEGORIES = [
+  'Process Issues',
+  'Data & Reporting',
+  'Compliance & Risk',
+  'System & Tool Issues',
+  'People & Knowledge',
+];
+
+export const FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Ad-hoc'];
+export const STATUSES   = ['Submitted', 'Triaged', 'POC Assigned', 'In Progress', 'Pending Validation', 'Closed', 'Reopened'];
+export const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
+
+// -----------------------------------------------------------------------------
+// Priority calculation (mirrors Framework "Prioritisation Parameters" sheet)
+// -----------------------------------------------------------------------------
+
+const FREQ_BASE = { 'Daily': 100, 'Weekly': 75, 'Monthly': 40, 'Ad-hoc': 15 };
+
+// Percentile rank on 0..100 scale (Excel PERCENTRANK semantics, INC)
+const percentRank = (values, v) => {
+  const arr = values.slice().sort((a, b) => a - b);
+  const n = arr.length;
+  if (n <= 1) return 0;
+  // count strictly less than v
+  let below = 0;
+  for (const x of arr) if (x < v) below++;
+  // proportion of values strictly below v
+  return Math.round((below / (n - 1)) * 1000) / 10;
 };
 
-export const STATUSES = ['Submitted', 'Triage', 'Assigned', 'In Progress', 'Pending Validation', 'Closed', 'Reopened'];
-export const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
+export const computeScores = (ticket, all) => {
+  const peopleVals = all.map((t) => Number(t.impact.peopleAffected) || 0);
+  const hoursVals  = all.map((t) => Number(t.impact.hoursLostPerWeek) || 0);
+  const costVals   = all.map((t) => Number(t.impact.costSavings) || 0);
+  const freqVals   = all.map((t) => FREQ_BASE[t.impact.frequency] ?? 0);
+
+  const peopleScore = percentRank(peopleVals, Number(ticket.impact.peopleAffected) || 0);
+  const timeScore   = percentRank(hoursVals,  Number(ticket.impact.hoursLostPerWeek) || 0);
+  const costScore   = percentRank(costVals,   Number(ticket.impact.costSavings) || 0);
+  const freqScore   = percentRank(freqVals,   FREQ_BASE[ticket.impact.frequency] ?? 0);
+
+  const composite = Math.round(((peopleScore + timeScore + costScore + freqScore) / 4) * 10) / 10;
+  return { peopleScore, timeScore, costScore, freqScore, composite };
+};
+
+export const computeTier = (composite, complianceRisk) => {
+  if (complianceRisk === 'Yes') return 'P0';
+  if (composite >= 70) return 'P1';
+  if (composite >= 40) return 'P2';
+  return 'P3';
+};
+
+export const tierLabel = (tier) => {
+  switch (tier) {
+    case 'P0': return 'P0 (Compliance)';
+    case 'P1': return 'P1 (Critical)';
+    case 'P2': return 'P2 (High)';
+    case 'P3': return 'P3 (Standard)';
+    default:   return tier;
+  }
+};
+
+// Linear ranking: P0 (compliance) first (sorted by composite asc to mirror Excel),
+// then everyone else by composite desc.
+export const linearRank = (tickets) => {
+  const withScores = tickets.map((t) => {
+    const scores = computeScores(t, tickets);
+    const tier = computeTier(scores.composite, t.impact.complianceRisk);
+    return { ...t, scores, tier };
+  });
+  const p0 = withScores
+    .filter((t) => t.tier === 'P0')
+    .sort((a, b) => a.scores.composite - b.scores.composite);
+  const rest = withScores
+    .filter((t) => t.tier !== 'P0')
+    .sort((a, b) => b.scores.composite - a.scores.composite);
+  return [...p0, ...rest].map((t, i) => ({ ...t, rank: i + 1 }));
+};
+
+// -----------------------------------------------------------------------------
+// Tickets — modelled on Framework "Issue Log" sample rows
+// -----------------------------------------------------------------------------
 
 export const MOCK_TICKETS = [
   {
-    id: 'SCM-2025-12-000001',
-    title: 'PO approval taking >72 hours for high-value items',
-    module: 'Procurement',
-    function: 'PO Processing',
-    category: 'Process Gap',
-    subcategory: 'Approval Delay',
-    description: 'High-value purchase orders above ₹50L are stuck in approval queue for more than 72 hours due to missing escalation logic in the workflow. This is causing supplier delivery delays for critical network infrastructure.',
-    priority: 'P1',
+    id: 'SCM-SOW-001',
+    title: 'Manual / Avoidable Step',
+    module: 'SOW', subProcess: 'SOW Review & Approval',
+    function: 'Material Management',
+    category: 'Process Issues',
+    description: 'Manual SOW validation causes 3–5 day delays before vendor onboarding can begin.',
+    submittedBy: 'Akram Raza', submittedById: 'u9',
+    submittedAt: '2026-04-10T09:00:00Z',
+    assignedTo: 'Kushal Soni', assignedToId: 'u6',
     status: 'In Progress',
-    submittedBy: 'Ravi Kumar',
-    submittedById: 'u1',
-    submittedAt: '2025-12-02T09:15:00Z',
-    assignedTo: 'Amit Singh',
-    assignedToId: 'u3',
-    sla: { responseHours: 8, resolutionHours: 72, elapsed: 38, state: 'on-track' },
-    impact: { peopleAffected: 120, frequency: 'Weekly', hoursLostPerWeek: 24, costSavings: 850000, complianceRisk: 'Medium' },
-    impactScore: 78,
-    coeEffortScore: 6,
-    suggestedSolution: 'Implement auto-escalation to next approval level if pending >24 hours.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: [],
-    brdStatus: 'Draft Generated',
-    brdId: 'BRD-001',
-    tags: ['approval', 'escalation', 'procurement'],
+    impact: { peopleAffected: 4, frequency: 'Daily', hoursLostPerWeek: 18, costSavings: 150000, complianceRisk: 'No' },
+    sla: { responseHours: 8, resolutionHours: 72, elapsed: 96, state: 'breached', target: 'BREACH', daysOpen: 33 },
+    coeEffortDays: 12,
+    suggestedSolution: 'Auto-route SOW to predefined validator pool with rule-based pre-checks.',
+    supportingEvidence: 'https://airtel.sharepoint.com/scm/sow-delay-evidence.pdf',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Pending', brdId: null,
+    tags: ['sow', 'manual'],
   },
   {
-    id: 'SCM-2025-12-000002',
-    title: 'Duplicate GRN entries appearing for split shipments',
-    module: 'Warehouse',
-    function: 'Receiving',
-    category: 'Bug',
-    subcategory: 'Data Mismatch',
-    description: 'When a single PO is received in multiple shipments, the GRN module is creating duplicate header records instead of appending line items.',
-    priority: 'P0',
-    status: 'Triage',
-    submittedBy: 'Ravi Kumar',
-    submittedById: 'u1',
-    submittedAt: '2025-12-04T14:42:00Z',
-    assignedTo: null,
-    assignedToId: null,
-    sla: { responseHours: 4, resolutionHours: 24, elapsed: 22, state: 'at-risk' },
-    impact: { peopleAffected: 45, frequency: 'Daily', hoursLostPerWeek: 18, costSavings: 320000, complianceRisk: 'High' },
-    impactScore: 92,
-    coeEffortScore: 4,
-    suggestedSolution: 'Add unique constraint on (PO_ID, Shipment_Ref) and merge logic for split shipments.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: ['SCM-2025-12-000008'],
-    brdStatus: 'Pending',
-    brdId: null,
-    tags: ['grn', 'duplicate', 'data'],
+    id: 'SCM-VND-002',
+    title: 'Handoff Failure',
+    module: 'Vendor Onboarding', subProcess: 'Vendor Verification',
+    function: 'Infra',
+    category: 'Process Issues',
+    description: 'Vendor verification done via email chains with no tracking or acknowledgement.',
+    submittedBy: 'Rajesh Kansal', submittedById: 'u8',
+    submittedAt: '2026-04-12T09:00:00Z',
+    assignedTo: 'Shikha Aggarwal', assignedToId: 'u7',
+    status: 'Triaged',
+    impact: { peopleAffected: 3, frequency: 'Daily', hoursLostPerWeek: 22, costSavings: 50000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 168, elapsed: 92, state: 'on-track', target: 'On Track', daysOpen: 31 },
+    coeEffortDays: 8,
+    suggestedSolution: 'Move verification to portal with status tracking and acknowledgements.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Pending', brdId: null,
+    tags: ['vendor', 'handoff'],
   },
   {
-    id: 'SCM-2025-12-000003',
-    title: 'Vendor onboarding requires 18 manual approvals — automate',
-    module: 'Vendor Management',
-    function: 'Sourcing',
-    category: 'Automation Opportunity',
-    subcategory: 'Workflow',
-    description: 'New vendor onboarding currently requires 18 sequential manual approvals across 6 teams. Average TAT is 14 days — competitors do this in 3.',
-    priority: 'P2',
-    status: 'Assigned',
-    submittedBy: 'Priya Sharma',
-    submittedById: 'u2',
-    submittedAt: '2025-11-28T11:00:00Z',
-    assignedTo: 'Amit Singh',
-    assignedToId: 'u3',
-    sla: { responseHours: 24, resolutionHours: 240, elapsed: 156, state: 'on-track' },
-    impact: { peopleAffected: 80, frequency: 'Monthly', hoursLostPerWeek: 12, costSavings: 1500000, complianceRisk: 'Low' },
-    impactScore: 71,
-    coeEffortScore: 9,
-    suggestedSolution: 'Parallelize independent approvals, introduce risk-based auto-approval for tier-3 vendors.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: [],
-    brdStatus: 'In Review',
-    brdId: 'BRD-002',
-    tags: ['vendor', 'onboarding', 'rpa'],
+    id: 'SCM-GBP-003',
+    title: 'Approval Bottleneck',
+    module: 'GBPA', subProcess: 'Approval Workflow',
+    function: 'Network',
+    category: 'Process Issues',
+    description: 'Single approver for all GBPA requests above threshold; 3–7 day queue building up.',
+    submittedBy: 'Varun Mehta', submittedById: 'u8',
+    submittedAt: '2026-04-14T09:00:00Z',
+    assignedTo: 'Rajesh Kansal', assignedToId: 'u8',
+    status: 'POC Assigned',
+    impact: { peopleAffected: 3.5, frequency: 'Daily', hoursLostPerWeek: 15, costSavings: 25000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 168, elapsed: 80, state: 'on-track', target: 'On Track', daysOpen: 29 },
+    coeEffortDays: 5,
+    suggestedSolution: 'Tier-based approval matrix with parallel routing.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Pending', brdId: null,
+    tags: ['gbpa', 'approval'],
   },
   {
-    id: 'SCM-2025-12-000004',
-    title: 'GSTR-2A reconciliation report missing line-level breakup',
-    module: 'Procurement',
-    function: 'Invoice Matching',
-    category: 'Compliance Risk',
-    subcategory: 'Audit Gap',
-    description: 'GST input credit reconciliation report does not show line-level mismatches. Auditors flagged this as a gap during last quarterly review.',
-    priority: 'P0',
+    id: 'SCM-PO-004',
+    title: 'Financial Leakage — PO/GRN Mismatch',
+    module: 'PO', subProcess: 'GRN Matching',
+    function: 'ToCo',
+    category: 'Compliance & Risk',
+    description: 'PO-GRN mismatch resulting in potential duplicate payments — 4 confirmed cases in Q1.',
+    submittedBy: 'Shikha Aggarwal', submittedById: 'u7',
+    submittedAt: '2026-04-15T09:00:00Z',
+    assignedTo: 'Varun Mehta', assignedToId: 'u3',
     status: 'In Progress',
-    submittedBy: 'Priya Sharma',
-    submittedById: 'u2',
-    submittedAt: '2025-12-01T08:30:00Z',
-    assignedTo: 'Amit Singh',
-    assignedToId: 'u3',
-    sla: { responseHours: 4, resolutionHours: 48, elapsed: 51, state: 'breached' },
-    impact: { peopleAffected: 25, frequency: 'Monthly', hoursLostPerWeek: 8, costSavings: 2200000, complianceRisk: 'High' },
-    impactScore: 88,
-    coeEffortScore: 5,
-    suggestedSolution: 'Add line-level diff view in reconciliation report with drill-down to invoice PDF.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: [],
-    brdStatus: 'Approved',
-    brdId: 'BRD-003',
-    tags: ['gst', 'compliance', 'audit'],
+    impact: { peopleAffected: 6, frequency: 'Weekly', hoursLostPerWeek: 8, costSavings: 80000, complianceRisk: 'Yes' },
+    sla: { responseHours: 4, resolutionHours: 48, elapsed: 60, state: 'on-track', target: 'On Track', daysOpen: 28 },
+    coeEffortDays: 10,
+    suggestedSolution: 'Enforce 3-way match in ERP and block duplicate payment runs.',
+    supportingEvidence: 'audit-finding-Q1.xlsx',
+    testEvidence: [],
+    notes: 'Auto P0 — compliance override',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Approved', brdId: 'BRD-004',
+    tags: ['po', 'grn', 'compliance'],
   },
   {
-    id: 'SCM-2025-12-000005',
-    title: 'Need region-wise inventory aging dashboard',
-    module: 'Inventory',
-    function: 'Receiving',
-    category: 'Dashboard / Report',
-    subcategory: 'New KPI',
-    description: 'Leadership needs a single-pane dashboard showing inventory aging buckets (0-30, 31-60, 61-90, 90+ days) split by region and category.',
-    priority: 'P2',
+    id: 'SCM-NFA-005',
+    title: 'Unclear Process Design — NFA Turnaround',
+    module: 'NFA', subProcess: 'NFA Submission',
+    function: 'DTH',
+    category: 'Process Issues',
+    description: 'NFA turnaround exceeds 7 days; no SLA defined; different verticals using different steps.',
+    submittedBy: 'Akram Raza', submittedById: 'u9',
+    submittedAt: '2026-04-16T09:00:00Z',
+    assignedTo: null, assignedToId: null,
     status: 'Submitted',
-    submittedBy: 'Neeta Rao',
-    submittedById: 'u4',
-    submittedAt: '2025-12-05T16:20:00Z',
-    assignedTo: null,
-    assignedToId: null,
-    sla: { responseHours: 24, resolutionHours: 168, elapsed: 4, state: 'on-track' },
-    impact: { peopleAffected: 15, frequency: 'One-time', hoursLostPerWeek: 4, costSavings: 600000, complianceRisk: 'Low' },
-    impactScore: 54,
-    coeEffortScore: 5,
-    suggestedSolution: 'Build dashboard in existing BI tool with region/category filters and CSV export.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: [],
-    brdStatus: 'Pending',
-    brdId: null,
-    tags: ['dashboard', 'inventory', 'aging'],
+    impact: { peopleAffected: 2.5, frequency: 'Weekly', hoursLostPerWeek: 12, costSavings: 300000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 168, elapsed: 32, state: 'on-track', target: 'On Track', daysOpen: 27 },
+    coeEffortDays: 6,
+    suggestedSolution: 'Standardised NFA template + SLA-driven workflow.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Pending', brdId: null,
+    tags: ['nfa', 'sla'],
   },
   {
-    id: 'SCM-2025-12-000006',
-    title: 'Mobile app for warehouse pick-pack-ship',
-    module: 'Warehouse',
-    function: 'Receiving',
-    category: 'New Development',
-    subcategory: 'Mobile',
-    description: 'Warehouse associates need a mobile-first app with barcode scanning for pick-pack-ship operations. Currently using laptops on trolleys.',
-    priority: 'P3',
+    id: 'SCM-ORC-006',
+    title: 'Oracle MOAC Report Bug',
+    module: 'PO', subProcess: 'MOAC Report',
+    function: 'Material Management',
+    category: 'System & Tool Issues',
+    description: 'MOAC Oracle report not auto-refreshing for cost centre 4502; manual refresh takes 45 min/day.',
+    submittedBy: 'Gaurav Khanna', submittedById: 'u9',
+    submittedAt: '2026-04-18T09:00:00Z',
+    assignedTo: 'Gaurav Khanna', assignedToId: 'u3',
+    status: 'In Progress',
+    impact: { peopleAffected: 0.75, frequency: 'Daily', hoursLostPerWeek: 6, costSavings: 30000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 120, elapsed: 60, state: 'on-track', target: 'On Track', daysOpen: 25 },
+    coeEffortDays: 3,
+    suggestedSolution: 'Add scheduled refresh job for impacted cost centres.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'In Review', brdId: 'BRD-006',
+    tags: ['oracle', 'report'],
+  },
+  {
+    id: 'SCM-CON-007',
+    title: 'Inaccurate Contract Values in i360',
+    module: 'Contract', subProcess: 'Contract Amendment',
+    function: 'Infra',
+    category: 'Data & Reporting',
+    description: 'i360 showing pre-amendment contract values; 8 contracts affected; causing reconciliation errors.',
+    submittedBy: 'Rajesh Kansal', submittedById: 'u8',
+    submittedAt: '2026-04-20T09:00:00Z',
+    assignedTo: 'Shikha Aggarwal', assignedToId: 'u7',
+    status: 'Triaged',
+    impact: { peopleAffected: 2, frequency: 'Weekly', hoursLostPerWeek: 10, costSavings: 10000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 168, elapsed: 45, state: 'on-track', target: 'On Track', daysOpen: 23 },
+    coeEffortDays: 4,
+    suggestedSolution: 'Bi-directional sync between contract repo and i360.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Pending', brdId: null,
+    tags: ['contract', 'reporting'],
+  },
+  {
+    id: 'SCM-SRC-008',
+    title: 'Knowledge Gap — Vendor Shortlisting',
+    module: 'Sourcing', subProcess: 'Vendor Shortlisting',
+    function: 'Network',
+    category: 'People & Knowledge',
+    description: 'No documented process for vendor shortlisting criteria; different buyers applying different rules.',
+    submittedBy: 'Akram Raza', submittedById: 'u9',
+    submittedAt: '2026-04-22T09:00:00Z',
+    assignedTo: null, assignedToId: null,
     status: 'Submitted',
-    submittedBy: 'Ravi Kumar',
-    submittedById: 'u1',
-    submittedAt: '2025-12-06T10:05:00Z',
-    assignedTo: null,
-    assignedToId: null,
-    sla: { responseHours: 48, resolutionHours: 480, elapsed: 2, state: 'on-track' },
-    impact: { peopleAffected: 200, frequency: 'Daily', hoursLostPerWeek: 30, costSavings: 3500000, complianceRisk: 'Low' },
-    impactScore: 82,
-    coeEffortScore: 10,
-    suggestedSolution: 'Build PWA with offline-first sync, barcode via device camera.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: [],
-    brdStatus: 'Pending',
-    brdId: null,
-    tags: ['mobile', 'warehouse', 'barcode'],
+    impact: { peopleAffected: 1.5, frequency: 'Weekly', hoursLostPerWeek: 8, costSavings: 75000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 168, elapsed: 30, state: 'on-track', target: 'On Track', daysOpen: 21 },
+    coeEffortDays: 5,
+    suggestedSolution: 'Document & circulate a shortlisting scorecard; quarterly refresh.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Pending', brdId: null,
+    tags: ['sourcing', 'sop'],
   },
   {
-    id: 'SCM-2025-12-000007',
-    title: 'Demand forecast variance >25% for circle-level SKUs',
-    module: 'Demand Planning',
-    function: 'Sourcing',
-    category: 'Process Gap',
-    subcategory: 'Missing Step',
-    description: 'Forecast accuracy at circle-level SKU is dropping due to missing seasonality adjustment in demand planning model.',
-    priority: 'P1',
+    id: 'SCM-PR-009',
+    title: 'Oracle ↔ i360 PR Sync Gap',
+    module: 'PR', subProcess: 'PR Approval',
+    function: 'Material Management',
+    category: 'System & Tool Issues',
+    description: 'Oracle PR approvals not syncing to i360 dashboard; manual update required every morning.',
+    submittedBy: 'Varun Mehta', submittedById: 'u3',
+    submittedAt: '2026-04-24T09:00:00Z',
+    assignedTo: 'Rajesh Kansal', assignedToId: 'u8',
+    status: 'POC Assigned',
+    impact: { peopleAffected: 1, frequency: 'Daily', hoursLostPerWeek: 14, costSavings: 120000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 120, elapsed: 50, state: 'on-track', target: 'On Track', daysOpen: 19 },
+    coeEffortDays: 7,
+    suggestedSolution: 'Event-driven push from Oracle to i360 on approval.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Pending', brdId: null,
+    tags: ['oracle', 'i360'],
+  },
+  {
+    id: 'SCM-SLA-010',
+    title: 'Contractual SLA Breach — Vendor',
+    module: 'Contract', subProcess: 'Vendor SLA Tracking',
+    function: 'Network',
+    category: 'Compliance & Risk',
+    description: 'Vendor SLA breached on 3 active contracts; penalty clauses live; not flagged anywhere in system.',
+    submittedBy: 'Shikha Aggarwal', submittedById: 'u7',
+    submittedAt: '2026-04-26T09:00:00Z',
+    assignedTo: 'Kushal Soni', assignedToId: 'u6',
+    status: 'In Progress',
+    impact: { peopleAffected: 2, frequency: 'Daily', hoursLostPerWeek: 5, costSavings: 200000, complianceRisk: 'Yes' },
+    sla: { responseHours: 4, resolutionHours: 48, elapsed: 28, state: 'on-track', target: 'On Track', daysOpen: 17 },
+    coeEffortDays: 6,
+    suggestedSolution: 'SLA monitor with proactive alerts & penalty accrual ledger.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: 'Auto P0 — penalty accruing',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'In Review', brdId: 'BRD-010',
+    tags: ['sla', 'compliance'],
+  },
+  // A closed item for "Reports" demonstration (Submitter view)
+  {
+    id: 'SCM-VND-011',
+    title: 'Vendor Master Cleanup',
+    module: 'Master Data', subProcess: 'Vendor Records',
+    function: 'COE',
+    category: 'Data & Reporting',
+    description: 'Cleansed 1,200 duplicate vendor records; introduced dedup rules.',
+    submittedBy: 'Ravi Kumar', submittedById: 'u1',
+    submittedAt: '2026-03-02T09:00:00Z',
+    assignedTo: 'Amit Singh', assignedToId: 'u3',
     status: 'Pending Validation',
-    submittedBy: 'Priya Sharma',
-    submittedById: 'u2',
-    submittedAt: '2025-11-20T13:45:00Z',
-    assignedTo: 'Amit Singh',
-    assignedToId: 'u3',
-    sla: { responseHours: 8, resolutionHours: 96, elapsed: 88, state: 'on-track' },
-    impact: { peopleAffected: 60, frequency: 'Weekly', hoursLostPerWeek: 16, costSavings: 1800000, complianceRisk: 'Medium' },
-    impactScore: 75,
-    coeEffortScore: 7,
-    suggestedSolution: 'Introduce seasonality coefficient per circle into planning model.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: [],
-    brdStatus: 'Approved',
-    brdId: 'BRD-004',
-    tags: ['forecast', 'demand', 'ml'],
+    impact: { peopleAffected: 2, frequency: 'Weekly', hoursLostPerWeek: 4, costSavings: 240000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 168, elapsed: 120, state: 'on-track', target: 'On Track', daysOpen: 14 },
+    coeEffortDays: 3,
+    suggestedSolution: 'Dedup logic now live; ready for submitter validation.',
+    supportingEvidence: '',
+    testEvidence: [
+      { id: 'te1', label: 'Dedup before/after screenshot', url: 'https://airtel.sharepoint.com/scm/dedup-screenshot.png' },
+      { id: 'te2', label: 'UAT environment link',         url: 'https://uat.scm.airtel.in/vendor-master' },
+    ],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Approved', brdId: 'BRD-011',
+    tags: ['vendor', 'master-data'],
   },
   {
-    id: 'SCM-2025-12-000008',
-    title: 'Duplicate GRN bug — child for split shipment edge case',
-    module: 'Warehouse',
-    function: 'Receiving',
-    category: 'Bug',
-    subcategory: 'Data Mismatch',
-    description: 'Edge case identified as child of SCM-2025-12-000002 — happens specifically when shipments arrive across financial year boundary.',
-    priority: 'P1',
-    status: 'Assigned',
-    submittedBy: 'Ravi Kumar',
-    submittedById: 'u1',
-    submittedAt: '2025-12-05T09:30:00Z',
-    assignedTo: 'Amit Singh',
-    assignedToId: 'u3',
-    sla: { responseHours: 8, resolutionHours: 72, elapsed: 12, state: 'on-track' },
-    impact: { peopleAffected: 12, frequency: 'Monthly', hoursLostPerWeek: 4, costSavings: 80000, complianceRisk: 'Medium' },
-    impactScore: 52,
-    coeEffortScore: 3,
-    suggestedSolution: 'Add financial year guard to merge logic.',
-    relatedTicketId: 'SCM-2025-12-000002',
-    parentId: 'SCM-2025-12-000002',
-    childrenIds: [],
-    brdStatus: 'Linked to parent',
-    brdId: null,
-    tags: ['grn', 'edge-case'],
-  },
-  {
-    id: 'SCM-2025-11-000044',
-    title: 'Auto-notification on supplier ASN delays',
-    module: 'Logistics',
-    function: 'Receiving',
-    category: 'Automation Opportunity',
-    subcategory: 'Notification',
-    description: 'When ASN (Advance Shipping Notice) is delayed by >24 hours, no auto-alert is sent to procurement team.',
-    priority: 'P2',
+    id: 'SCM-PO-012',
+    title: 'ASN Auto-Notification',
+    module: 'Downstream', subProcess: 'ASN Tracking',
+    function: 'Service',
+    category: 'System & Tool Issues',
+    description: 'ASN delay alerts now auto-fire after 24h slip.',
+    submittedBy: 'Ravi Kumar', submittedById: 'u1',
+    submittedAt: '2026-02-10T11:20:00Z',
+    assignedTo: 'Amit Singh', assignedToId: 'u3',
     status: 'Closed',
-    submittedBy: 'Ravi Kumar',
-    submittedById: 'u1',
-    submittedAt: '2025-11-10T11:20:00Z',
-    assignedTo: 'Amit Singh',
-    assignedToId: 'u3',
-    sla: { responseHours: 24, resolutionHours: 120, elapsed: 96, state: 'on-track' },
-    impact: { peopleAffected: 35, frequency: 'Weekly', hoursLostPerWeek: 6, costSavings: 240000, complianceRisk: 'Low' },
-    impactScore: 48,
-    coeEffortScore: 3,
-    suggestedSolution: 'Schedule a job to scan ASN table and trigger email/Teams alert.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: [],
-    brdStatus: 'Approved',
-    brdId: 'BRD-005',
+    impact: { peopleAffected: 1, frequency: 'Weekly', hoursLostPerWeek: 6, costSavings: 240000, complianceRisk: 'No' },
+    sla: { responseHours: 24, resolutionHours: 120, elapsed: 96, state: 'on-track', target: 'On Track', daysOpen: 6 },
+    coeEffortDays: 3,
+    suggestedSolution: 'Scheduled job scans ASN table and posts Teams alerts.',
+    supportingEvidence: '',
+    testEvidence: [],
+    notes: '',
+    relatedTicketId: '', parentId: null, childrenIds: [],
+    brdStatus: 'Approved', brdId: 'BRD-012',
     tags: ['asn', 'notification'],
-  },
-  {
-    id: 'SCM-2025-11-000028',
-    title: 'Contract renewal alerts going to inactive users',
-    module: 'Vendor Management',
-    function: 'Contracting',
-    category: 'Bug',
-    subcategory: 'Integration',
-    description: 'Contract renewal alerts (T-60, T-30, T-7) are being sent to deactivated user IDs from legacy AD sync.',
-    priority: 'P2',
-    status: 'Closed',
-    submittedBy: 'Priya Sharma',
-    submittedById: 'u2',
-    submittedAt: '2025-11-02T09:00:00Z',
-    assignedTo: 'Amit Singh',
-    assignedToId: 'u3',
-    sla: { responseHours: 24, resolutionHours: 96, elapsed: 72, state: 'on-track' },
-    impact: { peopleAffected: 22, frequency: 'Monthly', hoursLostPerWeek: 3, costSavings: 50000, complianceRisk: 'Medium' },
-    impactScore: 42,
-    coeEffortScore: 2,
-    suggestedSolution: 'Filter alert recipient list against active AD users at send time.',
-    relatedTicketId: '',
-    parentId: null,
-    childrenIds: [],
-    brdStatus: 'Approved',
-    brdId: 'BRD-006',
-    tags: ['ad-sync', 'alerts'],
   },
 ];
 
+// Decorate each ticket with priority tier, composite score, ranking — derived
+// from the framework's Prioritisation Parameters so all consumers stay in sync.
+(() => {
+  const ranked = linearRank(MOCK_TICKETS);
+  MOCK_TICKETS.forEach((t) => {
+    const r = ranked.find((x) => x.id === t.id);
+    if (!r) return;
+    t.priority = r.tier;
+    t.scores = r.scores;
+    t.composite = r.scores.composite;
+    t.rank = r.rank;
+  });
+})();
+
+// -----------------------------------------------------------------------------
+// Comments / Audit / Notifications / BRDs
+// -----------------------------------------------------------------------------
+
 export const MOCK_COMMENTS = {
-  'SCM-2025-12-000001': [
-    { id: 'c1', author: 'Priya Sharma', authorRole: 'COE Admin', text: 'Confirmed with finance team — high-value threshold is ₹50L. Moving to In Progress.', at: '2025-12-02T11:30:00Z' },
-    { id: 'c2', author: 'Amit Singh', authorRole: 'POC Owner', text: 'Drafted workflow change. Will share BRD by EOD.', at: '2025-12-03T17:45:00Z' },
-    { id: 'c3', author: 'Amit Singh', authorRole: 'POC Owner', text: 'BRD shared. Awaiting COE review.', at: '2025-12-04T10:15:00Z' },
+  'SCM-SOW-001': [
+    { id: 'c1', author: 'Priya Sharma', authorRole: 'COE Admin', text: 'Confirmed SLA breach; escalating to POC Owner.', at: '2026-04-12T11:30:00Z' },
+    { id: 'c2', author: 'Kushal Soni',  authorRole: 'POC Owner', text: 'Drafted workflow change. Will share BRD by EOD.', at: '2026-04-15T17:45:00Z' },
   ],
-  'SCM-2025-12-000004': [
-    { id: 'c4', author: 'Priya Sharma', authorRole: 'COE Admin', text: 'SLA breached — escalating to leadership. Tagging compliance team.', at: '2025-12-03T09:00:00Z' },
+  'SCM-PO-004': [
+    { id: 'c4', author: 'Priya Sharma', authorRole: 'COE Admin', text: 'P0 by compliance override — duplicate payment risk.', at: '2026-04-16T09:00:00Z' },
   ],
 };
 
 export const MOCK_AUDIT = {
-  'SCM-2025-12-000001': [
-    { id: 'a1', at: '2025-12-02T09:15:00Z', actor: 'Ravi Kumar', action: 'Issue submitted', detail: 'Created ticket with priority P1' },
-    { id: 'a2', at: '2025-12-02T09:16:00Z', actor: 'System', action: 'AI Deduplication ran', detail: '0 duplicates found — proceeding as new' },
-    { id: 'a3', at: '2025-12-02T09:16:00Z', actor: 'System', action: 'Auto-prioritization', detail: 'Impact score 78 — P1 assigned' },
-    { id: 'a4', at: '2025-12-02T11:30:00Z', actor: 'Priya Sharma', action: 'Triage complete', detail: 'Status → Triage' },
-    { id: 'a5', at: '2025-12-02T11:32:00Z', actor: 'Priya Sharma', action: 'Assigned POC', detail: 'Assigned to Amit Singh' },
-    { id: 'a6', at: '2025-12-02T11:35:00Z', actor: 'System', action: 'Status change', detail: 'Status → In Progress' },
-    { id: 'a7', at: '2025-12-03T17:45:00Z', actor: 'Amit Singh', action: 'BRD draft generated', detail: 'BRD-001 created' },
+  'SCM-SOW-001': [
+    { id: 'a1', at: '2026-04-10T09:00:00Z', actor: 'Akram Raza',  action: 'Issue submitted', detail: 'Created ticket via capture form' },
+    { id: 'a2', at: '2026-04-10T09:01:00Z', actor: 'System',      action: 'Auto-prioritisation', detail: 'Composite 77.2 → P1' },
+    { id: 'a3', at: '2026-04-11T10:15:00Z', actor: 'Priya Sharma',action: 'Status change',  detail: 'Submitted → Triaged' },
+    { id: 'a4', at: '2026-04-12T11:32:00Z', actor: 'Priya Sharma',action: 'Assigned POC',   detail: 'Assigned to Kushal Soni' },
+    { id: 'a5', at: '2026-04-12T11:35:00Z', actor: 'System',      action: 'Status change',  detail: 'Triaged → POC Assigned' },
+    { id: 'a6', at: '2026-04-13T09:00:00Z', actor: 'Kushal Soni', action: 'Status change',  detail: 'POC Assigned → In Progress' },
+  ],
+  'SCM-PO-004': [
+    { id: 'b1', at: '2026-04-15T09:00:00Z', actor: 'Shikha Aggarwal', action: 'Issue submitted', detail: 'Compliance flagged' },
+    { id: 'b2', at: '2026-04-15T09:01:00Z', actor: 'System',          action: 'Priority Zero Override', detail: 'Compliance = Yes → P0' },
   ],
 };
 
 export const MOCK_NOTIFICATIONS = [
-  { id: 'n1', type: 'sla_breach', title: 'SLA Breached', message: 'SCM-2025-12-000004 has breached resolution SLA', ticketId: 'SCM-2025-12-000004', at: '2025-12-03T09:00:00Z', read: false },
-  { id: 'n2', type: 'assignment', title: 'New Assignment', message: 'SCM-2025-12-000008 has been assigned to you', ticketId: 'SCM-2025-12-000008', at: '2025-12-05T09:35:00Z', read: false },
-  { id: 'n3', type: 'comment', title: 'New Comment', message: 'Amit Singh commented on SCM-2025-12-000001', ticketId: 'SCM-2025-12-000001', at: '2025-12-04T10:15:00Z', read: true },
-  { id: 'n4', type: 'validation', title: 'Validation Needed', message: 'SCM-2025-11-000044 is ready for validation', ticketId: 'SCM-2025-11-000044', at: '2025-11-25T14:00:00Z', read: true },
-  { id: 'n5', type: 'sla_at_risk', title: 'SLA At Risk', message: 'SCM-2025-12-000002 is approaching resolution SLA', ticketId: 'SCM-2025-12-000002', at: '2025-12-05T08:00:00Z', read: false },
+  { id: 'n1', type: 'sla_breach',  title: 'SLA Breached',     message: 'SCM-SOW-001 has breached resolution SLA', ticketId: 'SCM-SOW-001', at: '2026-04-13T09:00:00Z', read: false },
+  { id: 'n2', type: 'assignment',  title: 'New Assignment',   message: 'SCM-PR-009 has been assigned to you',      ticketId: 'SCM-PR-009',  at: '2026-04-24T09:35:00Z', read: false },
+  { id: 'n3', type: 'comment',     title: 'New Comment',      message: 'Kushal Soni commented on SCM-SOW-001',     ticketId: 'SCM-SOW-001', at: '2026-04-15T17:45:00Z', read: true  },
+  { id: 'n4', type: 'validation',  title: 'Validation Needed',message: 'SCM-VND-011 is ready for your validation', ticketId: 'SCM-VND-011', at: '2026-04-25T14:00:00Z', read: false },
+  { id: 'n5', type: 'sla_at_risk', title: 'SLA At Risk',      message: 'SCM-VND-002 is approaching resolution SLA', ticketId: 'SCM-VND-002', at: '2026-04-26T08:00:00Z', read: false },
 ];
 
 export const MOCK_BRDS = {
-  'BRD-001': {
-    id: 'BRD-001',
-    ticketId: 'SCM-2025-12-000001',
-    title: 'BRD — PO Auto-Escalation for High-Value Items',
-    status: 'In Review',
-    version: 'v1.2',
+  'BRD-004': {
+    id: 'BRD-004', ticketId: 'SCM-PO-004',
+    title: 'BRD — PO/GRN 3-way Match Enforcement',
+    status: 'Approved', version: 'v1.1',
     versions: [
-      { v: 'v1.0', at: '2025-12-03T17:45:00Z', by: 'AI Draft' },
-      { v: 'v1.1', at: '2025-12-04T11:20:00Z', by: 'Amit Singh' },
-      { v: 'v1.2', at: '2025-12-05T09:00:00Z', by: 'Priya Sharma' },
+      { v: 'v1.0', at: '2026-04-16T09:00:00Z', by: 'AI Draft' },
+      { v: 'v1.1', at: '2026-04-17T11:20:00Z', by: 'Varun Mehta' },
     ],
     sections: {
-      'Background': 'High-value POs above ₹50L are stuck in approval queues for >72h causing supplier delays for critical infrastructure rollout.',
-      'Objective': 'Reduce average approval TAT for high-value POs from 72h to <24h via automatic escalation logic.',
-      'Scope': 'Procurement module — PO Approval workflow only. Excludes contract renewals and PR conversion.',
-      'Functional Requirements': '1. System shall escalate PO to next approver level if pending > 24h.\n2. Escalation email shall include PO summary, requester, and time elapsed.\n3. Maximum escalation depth = 3 levels.\n4. Audit log every escalation event.',
-      'Acceptance Criteria': '• 95% of high-value POs approved within 24h\n• Zero missed escalations in 30-day window\n• Audit trail complete and queryable',
-      'Risks & Dependencies': 'Dependency on AD group sync for next-approver resolution. Risk: approval bypass if escalation depth exceeded.',
+      'Background':           'Four confirmed duplicate-payment cases traced to PO/GRN mismatches in Q1.',
+      'Objective':            'Eliminate duplicate payments via enforced 3-way match in ERP.',
+      'Scope':                'PO module — Invoice matching only.',
+      'Functional Requirements': '1. Block invoice payment if PO/GRN/Invoice qty/value mismatch.\n2. Daily exception report to AP.\n3. Audit log for every override.',
+      'Acceptance Criteria':  '• Zero duplicate payments in 30-day window.\n• 100% exception coverage in daily report.',
+      'Risks & Dependencies': 'Oracle EBS patch level; finance team training.',
     },
   },
 };
 
-export const MOCK_POC_TASKS = [
-  { id: 't1', ticketId: 'SCM-2025-12-000001', title: 'Workflow change — auto-escalation logic', stage: 'In Progress', dueAt: '2025-12-09T18:00:00Z' },
-  { id: 't2', ticketId: 'SCM-2025-12-000003', title: 'Parallelize vendor onboarding approvals', stage: 'Review', dueAt: '2025-12-15T18:00:00Z' },
-  { id: 't3', ticketId: 'SCM-2025-12-000004', title: 'GSTR-2A line-level reconciliation', stage: 'In Progress', dueAt: '2025-12-07T12:00:00Z' },
-  { id: 't4', ticketId: 'SCM-2025-12-000008', title: 'GRN duplicate edge case fix', stage: 'To Do', dueAt: '2025-12-12T18:00:00Z' },
-  { id: 't5', ticketId: 'SCM-2025-12-000007', title: 'Seasonality coefficient integration', stage: 'Completed', dueAt: '2025-12-01T18:00:00Z' },
-];
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
 
 export const formatINR = (n) => {
+  if (n == null || isNaN(n)) return '—';
   if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
-  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
-  if (n >= 1000) return `₹${(n / 1000).toFixed(0)}K`;
+  if (n >= 100000)   return `₹${(n / 100000).toFixed(1)}L`;
+  if (n >= 1000)     return `₹${(n / 1000).toFixed(0)}K`;
   return `₹${n}`;
 };
 
@@ -429,8 +487,47 @@ export const formatDateTime = (iso) => {
 export const relativeTime = (iso) => {
   if (!iso) return '—';
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 60)    return `${diff}s ago`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+};
+
+// Convert tickets array to CSV string matching the Excel "Issue Log" columns.
+export const ticketsToCSV = (tickets) => {
+  const ranked = linearRank(tickets);
+  const headers = [
+    'Rank', 'Issue ID', 'Date Submitted', 'Module', 'Sub-Process', 'Category',
+    'Issue Title', 'Issue Description', 'Reported By', 'Function',
+    'Frequency', 'People Affected', 'Time Lost (hrs/wk)', 'Estimated Cost Saving',
+    'Compliance Risk?', 'People Score', 'Freq Score', 'Time Score', 'Cost Score',
+    'Composite Score', 'Priority Tier', 'Stage', 'POC Owner', 'Days Open',
+    'SLA Status', 'COE Effort (days)', 'Supporting Evidence', 'Notes',
+  ];
+  const escape = (v) => {
+    if (v == null) return '';
+    const s = String(v).replace(/"/g, '""');
+    return /[",\n]/.test(s) ? `"${s}"` : s;
+  };
+  const rows = ranked.map((t) => [
+    t.rank, t.id, formatDate(t.submittedAt), t.module, t.subProcess, t.category,
+    t.title, t.description, t.submittedBy, t.function,
+    t.impact.frequency, t.impact.peopleAffected, t.impact.hoursLostPerWeek, t.impact.costSavings,
+    t.impact.complianceRisk, t.scores.peopleScore, t.scores.freqScore, t.scores.timeScore, t.scores.costScore,
+    t.scores.composite, tierLabel(t.tier), t.status, t.assignedTo || '—', t.sla?.daysOpen ?? '',
+    t.sla?.target ?? '', t.coeEffortDays, t.supportingEvidence || '', t.notes || '',
+  ]);
+  return [headers, ...rows].map((r) => r.map(escape).join(',')).join('\n');
+};
+
+export const downloadCSV = (filename, csv) => {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };

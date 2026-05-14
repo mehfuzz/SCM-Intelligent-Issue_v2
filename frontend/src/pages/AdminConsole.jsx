@@ -8,7 +8,7 @@ import { Switch } from '../components/ui/switch';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
-import { MOCK_USERS, MODULES, CATEGORIES, SUBCATEGORIES, STATUSES } from '../data/mockData';
+import { MOCK_USERS, MODULES, FUNCTIONS, CATEGORIES, STATUSES } from '../data/mockData';
 import { toast } from 'sonner';
 import { Plus, Trash2, Save, Settings } from 'lucide-react';
 
@@ -35,32 +35,15 @@ export default function AdminConsole() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="font-display text-lg font-semibold">Categories</h3>
-                  <p className="text-xs text-gray-500">Issue categories and their subcategories.</p>
+                  <p className="text-xs text-gray-500">Issue categories from the SCM taxonomy.</p>
                 </div>
                 <Button size="sm" data-testid="admin-add-category-btn" className="bg-red-600 hover:bg-red-700"><Plus className="h-4 w-4 mr-1" /> Add category</Button>
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50 hover:bg-gray-50">
-                    <TableHead>Category</TableHead>
-                    <TableHead>Subcategories</TableHead>
-                    <TableHead className="w-[80px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {CATEGORIES.map((c) => (
-                    <TableRow key={c}>
-                      <TableCell className="font-medium">{c}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(SUBCATEGORIES[c] || []).map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}
-                        </div>
-                      </TableCell>
-                      <TableCell><Button variant="ghost" size="sm" data-testid={`delete-cat-${c}`}><Trash2 className="h-4 w-4 text-gray-400" /></Button></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map((c) => (
+                  <Badge key={c} className="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200">{c}</Badge>
+                ))}
+              </div>
             </CardContent>
           </Card>
 
@@ -70,6 +53,16 @@ export default function AdminConsole() {
               <div className="flex flex-wrap gap-2">
                 {MODULES.map((m) => <Badge key={m} className="bg-red-50 text-red-700 hover:bg-red-100">{m}</Badge>)}
                 <Button size="sm" variant="outline" data-testid="admin-add-module-btn"><Plus className="h-3 w-3 mr-1" /> Add</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-200 shadow-sm">
+            <CardContent className="p-5">
+              <h3 className="font-display text-lg font-semibold mb-3">Functions</h3>
+              <div className="flex flex-wrap gap-2">
+                {FUNCTIONS.map((f) => <Badge key={f} className="bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200">{f}</Badge>)}
+                <Button size="sm" variant="outline" data-testid="admin-add-function-btn"><Plus className="h-3 w-3 mr-1" /> Add</Button>
               </div>
             </CardContent>
           </Card>

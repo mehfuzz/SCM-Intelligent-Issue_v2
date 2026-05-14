@@ -1,6 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_TICKETS, MODULES, CATEGORIES, STATUSES, formatINR, formatDate } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
+import {
+  MOCK_TICKETS, MODULES, CATEGORIES, STATUSES, ROLES,
+  formatINR, formatDate, ticketsToCSV, downloadCSV,
+} from '../data/mockData';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -12,20 +16,33 @@ import { Search, Download, Filter, ChevronRight } from 'lucide-react';
 
 export default function Reports() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [q, setQ] = useState('');
   const [modFilter, setModFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const rows = useMemo(() => MOCK_TICKETS.filter((t) =>
+  const isSubmitter = user?.role === ROLES.SUBMITTER;
+  const isPocOwner  = user?.role === ROLES.POC_OWNER;
+
+  // Role-scoped dataset.
+  const scoped = useMemo(() => {
+    if (isSubmitter) return MOCK_TICKETS.filter((t) => t.submittedById === user.id);
+    if (isPocOwner)  return MOCK_TICKETS.filter((t) => t.assignedToId === user.id);
+    return MOCK_TICKETS;
+  }, [user, isSubmitter, isPocOwner]);
+
+  const rows = useMemo(() => scoped.filter((t) =>
     (q ? (t.title.toLowerCase().includes(q.toLowerCase()) || t.id.toLowerCase().includes(q.toLowerCase())) : true) &&
     (modFilter === 'all' ? true : t.module === modFilter) &&
     (catFilter === 'all' ? true : t.category === catFilter) &&
     (statusFilter === 'all' ? true : t.status === statusFilter)
-  ), [q, modFilter, catFilter, statusFilter]);
+  ), [scoped, q, modFilter, catFilter, statusFilter]);
 
   const exportCSV = () => {
-    toast.success(`Exported ${rows.length} rows to CSV (mock)`);
+    const csv = ticketsToCSV(rows);
+    downloadCSV(`scm-report-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    toast.success(`Exported ${rows.length} rows`);
   };
 
   return (
@@ -33,8 +50,14 @@ export default function Reports() {
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-red-600">Reports</p>
-          <h1 className="font-display text-3xl font-bold text-gray-900">All tickets &amp; filters</h1>
-          <p className="text-sm text-gray-500 mt-1">Build custom views, export and share with stakeholders.</p>
+          <h1 className="font-display text-3xl font-bold text-gray-900">
+            {isSubmitter ? 'My submissions' : 'All tickets & filters'}
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {isSubmitter
+              ? 'Reports for issues you submitted. Priority and SLA are managed by the COE team.'
+              : 'Build custom views, export and share with stakeholders.'}
+          </p>
         </div>
         <Button data-testid="export-csv-btn" onClick={exportCSV} className="bg-red-600 hover:bg-red-700">
           <Download className="h-4 w-4 mr-1" /> Export CSV
@@ -54,13 +77,13 @@ export default function Reports() {
                 className="pl-9"
               />
             </div>
-            <FilterSelect testId="reports-module-filter" value={modFilter} onChange={setModFilter} placeholder="Module" options={MODULES} />
-            <FilterSelect testId="reports-category-filter" value={catFilter} onChange={setCatFilter} placeholder="Category" options={CATEGORIES} />
-            <FilterSelect testId="reports-status-filter" value={statusFilter} onChange={setStatusFilter} placeholder="Status" options={STATUSES} />
+            <FilterSelect testId="reports-module-filter"   value={modFilter}    onChange={setModFilter}    placeholder="Module"   options={MODULES} />
+            <FilterSelect testId="reports-category-filter" value={catFilter}    onChange={setCatFilter}    placeholder="Category" options={CATEGORIES} />
+            <FilterSelect testId="reports-status-filter"   value={statusFilter} onChange={setStatusFilter} placeholder="Status"   options={STATUSES} />
           </div>
           <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
             <Filter className="h-3.5 w-3.5" />
-            Showing <span className="font-semibold text-gray-900">{rows.length}</span> of {MOCK_TICKETS.length} tickets
+            Showing <span className="font-semibold text-gray-900">{rows.length}</span> of {scoped.length} tickets
           </div>
         </CardContent>
       </Card>
@@ -71,9 +94,9 @@ export default function Reports() {
             <TableRow className="bg-gray-50 hover:bg-gray-50">
               <TableHead className="w-[170px]">Ticket</TableHead>
               <TableHead>Title</TableHead>
-              <TableHead className="w-[110px]">Priority</TableHead>
+              {!isSubmitter && <TableHead className="w-[110px]">Priority</TableHead>}
               <TableHead className="w-[140px]">Status</TableHead>
-              <TableHead className="w-[130px]">SLA</TableHead>
+              {!isSubmitter && <TableHead className="w-[130px]">SLA</TableHead>}
               <TableHead className="w-[110px]">Savings</TableHead>
               <TableHead className="w-[110px]">Submitted</TableHead>
               <TableHead className="w-[40px]"></TableHead>
@@ -90,16 +113,16 @@ export default function Reports() {
                   <div className="font-semibold text-sm text-gray-900 truncate max-w-md">{t.title}</div>
                   <div className="text-[11px] text-gray-500">{t.category}</div>
                 </TableCell>
-                <TableCell><PriorityBadge priority={t.priority} /></TableCell>
+                {!isSubmitter && <TableCell><PriorityBadge priority={t.priority} /></TableCell>}
                 <TableCell><StatusBadge status={t.status} /></TableCell>
-                <TableCell><SlaChip sla={t.sla} /></TableCell>
+                {!isSubmitter && <TableCell><SlaChip sla={t.sla} /></TableCell>}
                 <TableCell className="text-sm font-semibold text-gray-900">{formatINR(t.impact.costSavings)}</TableCell>
                 <TableCell className="text-xs text-gray-500">{formatDate(t.submittedAt)}</TableCell>
                 <TableCell><ChevronRight className="h-4 w-4 text-gray-400" /></TableCell>
               </TableRow>
             ))}
             {rows.length === 0 && (
-              <TableRow><TableCell colSpan={8} className="text-center py-12 text-gray-500">No tickets match your filters.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={isSubmitter ? 6 : 8} className="text-center py-12 text-gray-500">No tickets match your filters.</TableCell></TableRow>
             )}
           </TableBody>
         </Table>

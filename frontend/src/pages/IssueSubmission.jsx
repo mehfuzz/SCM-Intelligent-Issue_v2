@@ -15,15 +15,14 @@ import {
 } from '../components/ui/dialog';
 import { Switch } from '../components/ui/switch';
 import {
-  MODULES, FUNCTIONS, CATEGORIES, SUBCATEGORIES, MOCK_TICKETS, formatINR
+  MODULES, FUNCTIONS, CATEGORIES, FREQUENCIES, MOCK_TICKETS, formatINR
 } from '../data/mockData';
 import { toast } from 'sonner';
 import {
   ArrowLeft, ArrowRight, Check, FileText, Upload, Sparkles, Link2, X
 } from 'lucide-react';
 
-const FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'One-time'];
-const COMPLIANCE_LEVELS = ['None', 'Low', 'Medium', 'High'];
+const COMPLIANCE_OPTIONS = ['No', 'Yes'];
 
 export default function IssueSubmission() {
   const navigate = useNavigate();
@@ -34,13 +33,12 @@ export default function IssueSubmission() {
     module: '',
     function: '',
     category: '',
-    subcategory: '',
     description: '',
     frequency: 'Weekly',
     peopleAffected: '',
     hoursLost: '',
     costSavings: '',
-    complianceRisk: 'Low',
+    complianceRisk: 'No',
     suggestedSolution: '',
     relatedTicketId: '',
     hasWorkaround: false,
@@ -144,25 +142,14 @@ export default function IssueSubmission() {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-xs font-semibold">Category *</Label>
-                  <Select value={form.category} onValueChange={(v) => { set('category', v); set('subcategory', ''); }}>
-                    <SelectTrigger data-testid="form-category-select" className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold">Subcategory</Label>
-                  <Select value={form.subcategory} onValueChange={(v) => set('subcategory', v)} disabled={!form.category}>
-                    <SelectTrigger data-testid="form-subcategory-select" className="mt-1"><SelectValue placeholder="Select subcategory" /></SelectTrigger>
-                    <SelectContent>
-                      {(SUBCATEGORIES[form.category] || []).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div>
+                <Label className="text-xs font-semibold">Category *</Label>
+                <Select value={form.category} onValueChange={(v) => set('category', v)}>
+                  <SelectTrigger data-testid="form-category-select" className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label className="text-xs font-semibold">Description</Label>
@@ -228,15 +215,16 @@ export default function IssueSubmission() {
                 </div>
               </div>
               <div>
-                <Label className="text-xs font-semibold">Compliance risk</Label>
-                <div className="mt-2 flex gap-2 flex-wrap">
-                  {COMPLIANCE_LEVELS.map((c) => (
+                <Label className="text-xs font-semibold">Is this a Compliance Risk? *</Label>
+                <p className="text-[11px] text-gray-500 mt-0.5">Selecting "Yes" auto-flags this as Priority Zero per the SCM framework.</p>
+                <div className="mt-2 flex gap-2">
+                  {COMPLIANCE_OPTIONS.map((c) => (
                     <button
                       key={c}
                       type="button"
                       data-testid={`form-compliance-${c.toLowerCase()}`}
                       onClick={() => set('complianceRisk', c)}
-                      className={`px-3 py-1.5 text-xs rounded-full font-semibold border ${form.complianceRisk === c ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'}`}
+                      className={`px-4 py-1.5 text-xs rounded-full font-semibold border ${form.complianceRisk === c ? (c === 'Yes' ? 'bg-red-600 text-white border-red-600' : 'bg-gray-900 text-white border-gray-900') : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'}`}
                     >
                       {c}
                     </button>
@@ -312,7 +300,7 @@ export default function IssueSubmission() {
                 {[
                   ['Title', form.title],
                   ['Module / Function', `${form.module || '—'} · ${form.function || '—'}`],
-                  ['Category / Subcategory', `${form.category || '—'} · ${form.subcategory || '—'}`],
+                  ['Category', form.category || '—'],
                   ['Frequency', form.frequency],
                   ['People affected', form.peopleAffected || '—'],
                   ['Hours lost / wk', form.hoursLost || '—'],

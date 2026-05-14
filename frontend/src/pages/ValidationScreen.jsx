@@ -1,21 +1,26 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useState } from 'react';
-import { MOCK_TICKETS, formatDateTime } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
+import { MOCK_TICKETS, ROLES, formatDateTime } from '../data/mockData';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { PriorityBadge, StatusBadge } from '../components/shared/Badges';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, X, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Check, X, ShieldCheck, ExternalLink, Image as ImageIcon, FileText } from 'lucide-react';
 
 export default function ValidationScreen() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const ticket = id
     ? MOCK_TICKETS.find((t) => t.id === id)
-    : MOCK_TICKETS.find((t) => t.status === 'Pending Validation');
+    : MOCK_TICKETS.find((t) => t.status === 'Pending Validation' &&
+        (user?.role !== ROLES.SUBMITTER || t.submittedById === user.id));
 
   const [feedback, setFeedback] = useState('');
+  const isSubmitter = user?.role === ROLES.SUBMITTER;
+  const testEvidence = ticket?.testEvidence || [];
 
   if (!ticket) {
     return (
@@ -44,7 +49,7 @@ export default function ValidationScreen() {
         <CardHeader className="border-b border-gray-100">
           <div className="flex items-center gap-2">
             <span className="font-mono-airtel text-xs text-gray-500">{ticket.id}</span>
-            <PriorityBadge priority={ticket.priority} />
+            {!isSubmitter && <PriorityBadge priority={ticket.priority} />}
             <StatusBadge status={ticket.status} />
           </div>
           <CardTitle className="font-display text-lg mt-1">{ticket.title}</CardTitle>
@@ -58,6 +63,43 @@ export default function ValidationScreen() {
             <div className="text-xs font-semibold uppercase tracking-widest text-gray-500">Resolution summary</div>
             <p className="mt-1 text-sm text-gray-700">{ticket.suggestedSolution}</p>
             <p className="text-[11px] text-gray-400 mt-2">Resolved by {ticket.assignedTo || 'Owner'} on {formatDateTime(ticket.submittedAt)}.</p>
+          </div>
+
+          {/* Test evidence — screenshots and links for the submitter to verify */}
+          <div data-testid="validation-test-evidence">
+            <div className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">Test screenshots &amp; links</div>
+            {testEvidence.length === 0 ? (
+              <div className="rounded-md border border-dashed border-gray-200 p-4 text-xs text-gray-500 text-center">
+                No test artefacts attached yet by the POC team.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {testEvidence.map((e) => {
+                  const isImage = /\.(png|jpe?g|gif|webp)$/i.test(e.url || '');
+                  const Icon = isImage ? ImageIcon : FileText;
+                  return (
+                    <li key={e.id} className="flex items-center gap-3 rounded-md border border-gray-200 p-3 hover:border-red-300 hover:bg-red-50/30 transition">
+                      <Icon className="h-4 w-4 text-red-600 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-gray-900 truncate">{e.label}</div>
+                        <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-gray-500 hover:text-red-600 break-all">
+                          {e.url}
+                        </a>
+                      </div>
+                      <a
+                        href={e.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid={`validation-evidence-link-${e.id}`}
+                        className="text-xs text-red-600 hover:text-red-700 font-semibold inline-flex items-center"
+                      >
+                        Open <ExternalLink className="h-3 w-3 ml-1" />
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           <div>

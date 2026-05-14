@@ -1,17 +1,20 @@
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { MOCK_TICKETS, MOCK_NOTIFICATIONS, formatINR, relativeTime, ROLES } from '../data/mockData';
 import { KpiCard } from '../components/shared/KpiCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { PriorityBadge, StatusBadge, SlaChip } from '../components/shared/Badges';
 import {
-  Inbox, AlertTriangle, CheckCircle2, Timer, FilePlus2, ArrowRight, Sparkles
+  Inbox, AlertTriangle, CheckCircle2, Timer, FilePlus2, ArrowRight, Sparkles, Search
 } from 'lucide-react';
 
 export default function HomeDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [q, setQ] = useState('');
 
   // role-aware ticket filtering
   let myTickets = MOCK_TICKETS;
@@ -19,12 +22,25 @@ export default function HomeDashboard() {
   if (user.role === ROLES.POC_OWNER) myTickets = MOCK_TICKETS.filter((t) => t.assignedToId === user.id);
   if (user.role === ROLES.COE_ADMIN) myTickets = MOCK_TICKETS;
 
-  const open = myTickets.filter((t) => !['Closed'].includes(t.status));
-  const breached = myTickets.filter((t) => t.sla.state === 'breached');
-  const closed = myTickets.filter((t) => t.status === 'Closed');
-  const savings = myTickets.reduce((s, t) => s + (t.impact.costSavings || 0), 0);
+  const isSubmitter = user.role === ROLES.SUBMITTER;
 
-  const recent = [...myTickets].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)).slice(0, 5);
+  const filteredTickets = useMemo(() => {
+    if (!q.trim()) return myTickets;
+    const needle = q.toLowerCase();
+    return myTickets.filter((t) =>
+      t.id.toLowerCase().includes(needle) ||
+      t.title.toLowerCase().includes(needle) ||
+      (t.module || '').toLowerCase().includes(needle) ||
+      (t.category || '').toLowerCase().includes(needle)
+    );
+  }, [myTickets, q]);
+
+  const open = filteredTickets.filter((t) => !['Closed'].includes(t.status));
+  const breached = filteredTickets.filter((t) => t.sla.state === 'breached');
+  const closed = filteredTickets.filter((t) => t.status === 'Closed');
+  const savings = filteredTickets.reduce((s, t) => s + (t.impact.costSavings || 0), 0);
+
+  const recent = [...filteredTickets].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)).slice(0, isSubmitter ? 50 : 5);
 
   return (
     <div className="space-y-6" data-testid="home-dashboard">
@@ -57,19 +73,36 @@ export default function HomeDashboard() {
         </div>
       </div>
 
+      {/* Search box — surfaced for submitters per requirements */}
+      <Card className="border-gray-200 shadow-sm">
+        <CardContent className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Input
+              data-testid="home-search-input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={isSubmitter ? 'Search your tickets by ID, title, module…' : 'Search tickets…'}
+              className="pl-9"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard testId="kpi-open" label="Open tickets" value={open.length} icon={Inbox} accent />
-        <KpiCard testId="kpi-breached" label="SLA breached" value={breached.length} icon={AlertTriangle} delta={breached.length > 0 ? `${breached.length} need action` : 'all clear'} deltaType={breached.length > 0 ? 'down' : 'up'} />
-        <KpiCard testId="kpi-closed" label="Closed this month" value={closed.length} icon={CheckCircle2} delta="+2 vs last mo" deltaType="up" />
-        <KpiCard testId="kpi-savings" label="Realized savings" value={formatINR(savings)} icon={Timer} />
+        <KpiCard testId="kpi-open" label={isSubmitter ? 'My open tickets' : 'Open tickets'} value={open.length} icon={Inbox} accent />
+        {!isSubmitter && <KpiCard testId="kpi-breached" label="SLA breached" value={breached.length} icon={AlertTriangle} delta={breached.length > 0 ? `${breached.length} need action` : 'all clear'} deltaType={breached.length > 0 ? 'down' : 'up'} />}
+        <KpiCard testId="kpi-closed" label={isSubmitter ? 'My closed' : 'Closed this month'} value={closed.length} icon={CheckCircle2} delta={isSubmitter ? '' : '+2 vs last mo'} deltaType="up" />
+        <KpiCard testId="kpi-savings" label={isSubmitter ? 'My estimated savings' : 'Realized savings'} value={formatINR(savings)} icon={Timer} />
+        {isSubmitter && <KpiCard testId="kpi-validation" label="Pending validation" value={filteredTickets.filter((t) => t.status === 'Pending Validation').length} icon={CheckCircle2} />}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent tickets */}
         <Card className="lg:col-span-2 border-gray-200 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between border-b border-gray-100">
-            <CardTitle className="font-display text-lg">Recent tickets</CardTitle>
+            <CardTitle className="font-display text-lg">{isSubmitter ? 'My tickets' : 'Recent tickets'}</CardTitle>
             <Button
               variant="ghost"
               size="sm"
@@ -80,7 +113,7 @@ export default function HomeDashboard() {
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-gray-100 max-h-[640px] overflow-y-auto">
               {recent.map((t) => (
                 <li
                   key={t.id}
@@ -91,7 +124,7 @@ export default function HomeDashboard() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-mono-airtel text-xs text-gray-500">{t.id}</span>
-                      <PriorityBadge priority={t.priority} />
+                      {!isSubmitter && <PriorityBadge priority={t.priority} />}
                     </div>
                     <div className="mt-1 truncate text-sm font-semibold text-gray-900">{t.title}</div>
                     <div className="mt-1 text-xs text-gray-500">
@@ -100,12 +133,14 @@ export default function HomeDashboard() {
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={t.status} />
-                    <SlaChip sla={t.sla} />
+                    {!isSubmitter && <SlaChip sla={t.sla} />}
                   </div>
                 </li>
               ))}
               {recent.length === 0 && (
-                <li className="p-8 text-center text-sm text-gray-500">No tickets yet — submit your first issue.</li>
+                <li className="p-8 text-center text-sm text-gray-500">
+                  {q ? 'No tickets match your search.' : 'No tickets yet — submit your first issue.'}
+                </li>
               )}
             </ul>
           </CardContent>

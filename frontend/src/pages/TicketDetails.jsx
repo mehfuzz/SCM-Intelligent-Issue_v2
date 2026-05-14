@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { MOCK_TICKETS, MOCK_COMMENTS, MOCK_AUDIT, formatINR, formatDateTime, relativeTime } from '../data/mockData';
+import { MOCK_TICKETS, MOCK_COMMENTS, MOCK_AUDIT, ROLES, formatINR, formatDateTime, relativeTime } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -16,10 +17,12 @@ import {
 export default function TicketDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const ticket = MOCK_TICKETS.find((t) => t.id === id);
   const comments = MOCK_COMMENTS[id] || [];
   const audit = MOCK_AUDIT[id] || [];
   const [newComment, setNewComment] = useState('');
+  const hidePriorityAndSla = user?.role === ROLES.SUBMITTER;
 
   if (!ticket) {
     return (
@@ -45,9 +48,9 @@ export default function TicketDetails() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-mono-airtel text-sm text-gray-500">{ticket.id}</span>
-            <PriorityBadge priority={ticket.priority} />
+            {!hidePriorityAndSla && <PriorityBadge priority={ticket.priority} />}
             <StatusBadge status={ticket.status} />
-            <SlaChip sla={ticket.sla} />
+            {!hidePriorityAndSla && <SlaChip sla={ticket.sla} />}
           </div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-gray-900 mt-1">
             {ticket.title}
@@ -193,9 +196,9 @@ export default function TicketDetails() {
             <CardContent className="p-4 text-sm">
               {[
                 ['Module', ticket.module],
+                ['Sub-process', ticket.subProcess || '—'],
                 ['Function', ticket.function],
                 ['Category', ticket.category],
-                ['Subcategory', ticket.subcategory],
                 ['Submitted by', ticket.submittedBy],
                 ['Submitted at', formatDateTime(ticket.submittedAt)],
                 ['Assigned to', ticket.assignedTo || 'Unassigned'],
@@ -210,23 +213,24 @@ export default function TicketDetails() {
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200 shadow-sm">
+          {!hidePriorityAndSla && <Card className="border-gray-200 shadow-sm">
             <CardHeader className="border-b border-gray-100"><CardTitle className="font-display text-base flex items-center gap-2"><Sparkles className="h-4 w-4 text-red-600" /> Impact &amp; priority</CardTitle></CardHeader>
             <CardContent className="p-4 text-sm space-y-2">
               <div className="rounded-md bg-red-50 p-3 text-red-700">
-                <div className="text-[11px] uppercase tracking-widest font-semibold">AI impact score</div>
-                <div className="font-display text-3xl font-bold mt-1">{ticket.impactScore}<span className="text-base">/100</span></div>
+                <div className="text-[11px] uppercase tracking-widest font-semibold">Composite score</div>
+                <div className="font-display text-3xl font-bold mt-1">{ticket.composite}<span className="text-base">/100</span></div>
+                <div className="text-[11px] mt-0.5">Rank #{ticket.rank} · {ticket.priority}</div>
               </div>
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <Metric label="People affected" value={ticket.impact.peopleAffected} />
                 <Metric label="Hours / wk" value={ticket.impact.hoursLostPerWeek} />
                 <Metric label="Cost savings" value={formatINR(ticket.impact.costSavings)} />
-                <Metric label="COE effort" value={`${ticket.coeEffortScore}/10`} />
+                <Metric label="COE effort" value={`${ticket.coeEffortDays || 0}d`} />
               </div>
             </CardContent>
-          </Card>
+          </Card>}
 
-          {(ticket.parentId || ticket.childrenIds.length > 0 || ticket.relatedTicketId) && (
+          {(ticket.parentId || (ticket.childrenIds || []).length > 0 || ticket.relatedTicketId) && (
             <Card className="border-gray-200 shadow-sm">
               <CardHeader className="border-b border-gray-100"><CardTitle className="font-display text-base flex items-center gap-2"><Link2 className="h-4 w-4" /> Linked tickets</CardTitle></CardHeader>
               <CardContent className="p-4 text-sm space-y-2">
