@@ -36,6 +36,7 @@ export default async function handler(req, res) {
   json(res, 200, {
     ok: true,
     supabaseConfigured: configured,
+    supabaseUrl: process.env.SUPABASE_URL || null,
     missingEnvVars: missing,
     dbReachable,
     userCount,
@@ -47,7 +48,7 @@ export default async function handler(req, res) {
       : !dbReachable
         ? 'Supabase env vars are set, but the API could not reach the database. Check the URL / key and that the project is not paused.'
         : (userCount ?? 0) === 0
-          ? 'Connected to Supabase but tables are empty. Run supabase/init.sql in the SQL Editor.'
+          ? 'Connected to Supabase but tables are empty. Either run the seed against this project, or update SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in Vercel to point at the project where you already loaded the data.'
           : 'OK',
   });
 }
