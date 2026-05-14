@@ -1,0 +1,164 @@
+{
+  "project_name": "Airtel SCM Issue Intelligence & Workflow Management Portal",
+  "theme": "light",
+  "archetype": "Archetype 4 (Swiss & High-Contrast)",
+  "rationale": "Enterprise internal tool prioritizing data density, clarity, and authority. Aligns with Airtel's brand using stark white backgrounds and strong red accents for primary actions and highlights.",
+  "colors": {
+    "primary": {
+      "DEFAULT": "#E40000",
+      "hover": "#B30000",
+      "light": "#FFE5E5",
+      "text": "#FFFFFF"
+    },
+    "background": {
+      "base": "#FFFFFF",
+      "subtle": "#F9FAFB",
+      "muted": "#F3F4F6"
+    },
+    "text": {
+      "primary": "#111827",
+      "secondary": "#4B5563",
+      "muted": "#9CA3AF"
+    },
+    "border": {
+      "DEFAULT": "#E5E7EB",
+      "focus": "#E40000"
+    },
+    "status": {
+      "p0_critical": "#DC2626",
+      "p1_high": "#F97316",
+      "p2_medium": "#FACC15",
+      "p3_low": "#3B82F6",
+      "sla_breached": "#EF4444",
+      "sla_at_risk": "#F59E0B",
+      "sla_on_track": "#10B981"
+    }
+  },
+  "typography": {
+    "headings": {
+      "family": "Manrope",
+      "weights": ["600", "700", "800"],
+      "h1": "text-3xl sm:text-4xl tracking-tight font-bold",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-bold",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "h4": "text-lg font-semibold"
+    },
+    "body": {
+      "family": "IBM Plex Sans",
+      "weights": ["400", "500", "600"],
+      "base": "text-sm sm:text-base leading-relaxed text-gray-900",
+      "muted": "text-sm text-gray-500",
+      "small": "text-xs font-medium uppercase tracking-[0.1em]"
+    }
+  },
+  "layout": {
+    "spacing_scale": "Tailwind standard (p-4, p-6 for inner containers, p-8 for main sections). Use dense spacing (gap-4) for data-heavy sections.",
+    "page_structure": "Left Sidebar (Navigation) + Top Header (User, Role Switcher, Notifications, Search) + Main Content Area",
+    "dashboard_grid": "Control Room layout: grid-cols-1 md:grid-cols-3 lg:grid-cols-4 or 12-column grid for complex widgets. Heavy use of bento-box style cards with sharp 4px or 8px border-radius.",
+    "cards": "Subtle border (border-gray-200), minimal shadow (shadow-sm), flat white background. No heavy gradients or glassmorphism in the main data area."
+  },
+  "components_strategy": {
+    "buttons": "Square or slightly rounded (rounded-md). Primary buttons use Airtel Red. Secondary buttons use white background with gray borders. Add active translation (-translate-y-0.5) on hover.",
+    "tables": "Shadcn Table. Dense rows. Use badges for Status, Priority, SLA. Sticky headers for long lists. Zebra striping or subtle hover row backgrounds.",
+    "forms": "Multi-step wizards for Issue Submission. Clear step indicators. Use Shadcn inputs, selects, and textareas. Left-aligned labels for readability.",
+    "charts": "Recharts. Use Airtel Red for primary metrics, combined with cool greys or status colors (green/yellow/red) for varied data points.",
+    "modals": "Shadcn Dialog. Use for 'Similar Issue Popup', Validation screens, and quick edits. Include backdrop blur.",
+    "badges": "Pill-shaped (rounded-full) or small rectangles. Distinct background/text contrast for P0-P3 and SLA states."
+  },
+  "screens": [
+    {
+      "id": "login",
+      "name": "Login Page",
+      "layout": "Split screen or centered card over premium abstract background.",
+      "key_elements": "Mock Role Selector (Dropdown or radio cards), Mock Login Button.",
+      "features": "Select between Submitter, COE Admin, POC Owner, Leadership, System Admin."
+    },
+    {
+      "id": "home_dashboard",
+      "name": "Home Dashboard",
+      "layout": "Bento Grid (Control Room)",
+      "key_elements": "Role-specific greeting, high-level summary widgets (My Tickets, Pending Actions), Quick Action buttons (New Issue)."
+    },
+    {
+      "id": "issue_submission",
+      "name": "Issue Submission",
+      "layout": "Centered Form Container (max-w-4xl)",
+      "key_elements": "Multi-step form wizard (Step 1: Basic Info, Step 2: Impact/Frequency, Step 3: Details/Attachments). Progress bar at the top."
+    },
+    {
+      "id": "similar_issue_modal",
+      "name": "Similar Issue Popup",
+      "layout": "Modal (Dialog) over Issue Submission",
+      "key_elements": "Triggered during Step 1. Shows 2-3 matching tickets. Buttons: 'This is my issue (Link)' or 'Continue creating new'."
+    },
+    {
+      "id": "ticket_details",
+      "name": "Ticket Details",
+      "layout": "2-column layout (Main Content 8 cols, Meta Sidebar 4 cols)",
+      "key_elements": "Header with Ticket ID & Status. Main: Description, Comments, Audit Trail. Sidebar: SLA, Priority, Assignee, Impact Score, Linked BRD."
+    },
+    {
+      "id": "coe_workbench",
+      "name": "COE Workbench",
+      "layout": "Full-width Data Intensive",
+      "key_elements": "Triage Queue (Table), Priority Override dropdowns, Assignment selections, SLA countdowns in rows."
+    },
+    {
+      "id": "poc_task_view",
+      "name": "POC Task View",
+      "layout": "Kanban Board or Task List",
+      "key_elements": "Columns: To Do, In Progress, Review, Completed. Drag-and-drop or status change dropdowns on cards."
+    },
+    {
+      "id": "brd_editor",
+      "name": "BRD Editor",
+      "layout": "Document Editor Style",
+      "key_elements": "Rich text area, Version history sidebar, 'Approve' / 'Request Changes' action buttons."
+    },
+    {
+      "id": "sla_monitor",
+      "name": "SLA Monitor",
+      "layout": "Dashboard / Grid",
+      "key_elements": "Countdown timers (bold typography). Red/Yellow/Green alerting chips. Filter by breached vs at-risk."
+    },
+    {
+      "id": "validation_screen",
+      "name": "Validation Screen",
+      "layout": "Card focused",
+      "key_elements": "Resolution summary, 'Accept Resolution' (Primary) vs 'Reject & Reopen' (Secondary/Destructive) buttons."
+    },
+    {
+      "id": "leadership_dashboard",
+      "name": "Leadership Dashboard",
+      "layout": "Analytics Grid",
+      "key_elements": "KPI Cards (Total Savings, Tickets Closed, SLA %). Recharts (Bar chart: Volume by category, Line chart: Resolution time trends)."
+    },
+    {
+      "id": "admin_console",
+      "name": "Admin Console",
+      "layout": "Tabs Layout",
+      "key_elements": "Tabs: Taxonomy (Categories/Subcats), Workflows, Users, Roles. Data tables with edit/delete actions."
+    },
+    {
+      "id": "notification_center",
+      "name": "Notification Center",
+      "layout": "List View or Drawer",
+      "key_elements": "Unread / Read filters. Timestamp. Click to navigate to ticket."
+    },
+    {
+      "id": "reports",
+      "name": "Reports",
+      "layout": "Table with Heavy Filtering",
+      "key_elements": "Multi-select filters (Date, Status, Category). Export to CSV/PDF button. Paginated table."
+    }
+  ],
+  "media_urls": {
+    "login_background": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/fc2ba3c5-0b5b-4b11-b411-7769291a5640/images/1707e71cf21817423ce661c8d133bd790e79b96f0b7fc9703735548cc12a67db.png",
+      "description": "Abstract, minimal, premium corporate background featuring subtle waves of Airtel red and pure white, clean enterprise aesthetic.",
+      "usage": "Use as a full-cover background image on the login page (Screen 1)."
+    }
+  },
+  "icons_library": "lucide-react",
+  "data_testid_rules": "All interactive elements (buttons, inputs, links, tabs, dialog triggers) MUST have a data-testid attribute formatted as kebab-case role-based names (e.g., data-testid='submit-issue-btn')."
+}
