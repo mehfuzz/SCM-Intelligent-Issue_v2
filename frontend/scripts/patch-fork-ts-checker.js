@@ -66,6 +66,7 @@ module.exports.ForkTsCheckerWebpackPlugin = ForkTsCheckerWebpackPlugin;
 
 // ---------------------------------------------------------------------------
 // 2) schema-utils@3 → no-op validate
+//    ajv-keywords@3 → no-op augmenter (silently accepts unknown keywords)
 // ---------------------------------------------------------------------------
 const SCHEMA_UTILS_STUB = `'use strict';
 // Patched at install time. schema-utils@3's options validation is a dev-time
@@ -89,7 +90,22 @@ exports.default = noop;
 exports.ValidationError = ValidationError;
 `;
 
-function walkSchemaUtils(dir, depth = 0) {
+const AJV_KEYWORDS_STUB = `'use strict';
+// Patched at install time. ajv-keywords@3 expects ajv@6's internal API
+// (\`ajv._formats\`), but the tree is forced to ajv@8 by the CRA fix for
+// terser-webpack-plugin. Replacing the augmenter with a no-op prevents the
+// "Cannot read properties of undefined (reading 'date')" crash without
+// affecting build behaviour — schemas that referenced legacy keywords like
+// \`formatMinimum\` will just see those keywords ignored.
+function ajvKeywords(ajv, keyword) {
+  return ajv;
+}
+ajvKeywords.get = function () { return undefined; };
+module.exports = ajvKeywords;
+module.exports.default = ajvKeywords;
+`;
+
+function walkAndPatch(dir, depth = 0) {
   if (depth > 12) return;
   let entries;
   try {
@@ -102,13 +118,13 @@ function walkSchemaUtils(dir, depth = 0) {
     const full = path.join(dir, entry.name);
     if (entry.name === 'schema-utils') {
       patchSchemaUtilsIfV3(full);
+    } else if (entry.name === 'ajv-keywords') {
+      patchAjvKeywordsIfV3(full);
     } else if (entry.name === 'node_modules' || entry.name.startsWith('@')) {
-      // Recurse into node_modules and scoped package roots.
-      walkSchemaUtils(full, depth + 1);
+      walkAndPatch(full, depth + 1);
     } else {
-      // Recurse one level so we find every nested node_modules/.
       const nested = path.join(full, 'node_modules');
-      if (fs.existsSync(nested)) walkSchemaUtils(nested, depth + 1);
+      if (fs.existsSync(nested)) walkAndPatch(nested, depth + 1);
     }
   }
 }
@@ -134,5 +150,26 @@ function patchSchemaUtilsIfV3(pkgDir) {
   }
 }
 
+function patchAjvKeywordsIfV3(pkgDir) {
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
+  } catch {
+    return;
+  }
+  const version = String(pkg.version || '');
+  if (!version.startsWith('3.')) return;
+
+  const mainRel = pkg.main || 'index.js';
+  const mainAbs = path.join(pkgDir, mainRel);
+  try {
+    fs.mkdirSync(path.dirname(mainAbs), { recursive: true });
+    fs.writeFileSync(mainAbs, AJV_KEYWORDS_STUB);
+    console.log('[patch] stubbed', path.relative(root, mainAbs), `(ajv-keywords@${version})`);
+  } catch (e) {
+    console.warn('[patch] failed to stub', mainAbs, ':', e.message);
+  }
+}
+
 stubForkTsChecker();
-walkSchemaUtils(nodeModules);
+walkAndPatch(nodeModules);
