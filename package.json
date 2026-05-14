@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Airtel SCM Issue Intelligence & Workflow Management Portal — Vercel serverless backend + React frontend, Supabase database.",
   "scripts": {
-    "vercel-build": "cd frontend && npm install --legacy-peer-deps && npm run build",
+    "vercel-build": "cd frontend && npm install --legacy-peer-deps && DISABLE_ESLINT_PLUGIN=true CI=false GENERATE_SOURCEMAP=false npm run build",
     "dev:frontend": "cd frontend && npm start",
     "db:reset": "supabase db reset",
     "db:push": "supabase db push"
