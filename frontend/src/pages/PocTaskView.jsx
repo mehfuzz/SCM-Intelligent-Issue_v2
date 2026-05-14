@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
 import {
   MOCK_TICKETS, STATUSES, formatINR, formatDate, linearRank,
   ticketsToCSV, downloadCSV,
@@ -45,12 +46,16 @@ export default function PocTaskView() {
     }, ...prev]);
   };
 
+  const persist = (ticketId, patch) =>
+    api.patchTicket(ticketId, patch).catch((err) => console.warn('[poc] persistence failed', err));
+
   const changeStatus = (ticketId, status) => {
     const t = tickets.find((x) => x.id === ticketId);
     if (!t || t.status === status) return;
     setTickets((prev) => prev.map((x) => x.id === ticketId ? { ...x, status } : x));
     log(ticketId, 'Status', t.status, status);
     toast.success(`${ticketId}: Status → ${status}`);
+    persist(ticketId, { status });
   };
 
   const changeEffort = (ticketId, days) => {
@@ -60,6 +65,7 @@ export default function PocTaskView() {
     setTickets((prev) => prev.map((x) => x.id === ticketId ? { ...x, coeEffortDays: next } : x));
     log(ticketId, 'COE Effort (days)', t.coeEffortDays ?? '—', next);
     toast.success(`${ticketId}: COE effort → ${next}d`);
+    persist(ticketId, { coeEffortDays: next });
   };
 
   const submitSlaChange = () => {
@@ -73,6 +79,8 @@ export default function PocTaskView() {
     ));
     log(ticket.id, 'SLA (resolution hrs)', ticket.sla?.resolutionHours ?? '—', hoursNum, comment);
     toast.success(`${ticket.id}: SLA updated`);
+    api.patchTicket(ticket.id, { sla: { resolutionHours: hoursNum }, note: comment })
+      .catch((err) => console.warn('[poc] persistence failed', err));
     setSlaDialog(null);
   };
 

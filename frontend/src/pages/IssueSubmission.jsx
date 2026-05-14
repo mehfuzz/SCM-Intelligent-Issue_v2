@@ -17,6 +17,8 @@ import { Switch } from '../components/ui/switch';
 import {
   MODULES, FUNCTIONS, CATEGORIES, FREQUENCIES, MOCK_TICKETS, formatINR
 } from '../data/mockData';
+import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import {
   ArrowLeft, ArrowRight, Check, FileText, Upload, Sparkles, Link2, X
@@ -26,8 +28,10 @@ const COMPLIANCE_OPTIONS = ['No', 'Yes'];
 
 export default function IssueSubmission() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [showSimilar, setShowSimilar] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     title: '',
     module: '',
@@ -66,9 +70,55 @@ export default function IssueSubmission() {
 
   const continueAfterSimilar = () => { setShowSimilar(false); setStep(2); };
 
-  const handleSubmit = () => {
-    toast.success('Issue submitted — Ticket ID generated: SCM-2025-12-000012');
-    setTimeout(() => navigate('/dashboard'), 800);
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    const payload = {
+      title: form.title,
+      module: form.module,
+      function: form.function,
+      category: form.category,
+      description: form.description,
+      submittedBy: user?.name,
+      submittedById: user?.id,
+      impact: {
+        peopleAffected:   Number(form.peopleAffected) || 0,
+        frequency:        form.frequency,
+        hoursLostPerWeek: Number(form.hoursLost) || 0,
+        costSavings:      Number(form.costSavings) || 0,
+        complianceRisk:   form.complianceRisk,
+      },
+      suggestedSolution: form.suggestedSolution,
+      relatedTicketId:   form.relatedTicketId,
+    };
+    try {
+      const created = await api.createTicket(payload);
+      toast.success(`Issue submitted — Ticket ID ${created.id}`);
+      // Optimistically prepend to the in-memory list so the user lands on
+      // a Home dashboard that already shows the new ticket.
+      MOCK_TICKETS.unshift(created);
+      navigate('/dashboard');
+    } catch (e) {
+      console.warn('[submit] API failed, falling back to in-memory only', e);
+      const fakeId = `SCM-${(form.module || 'NEW').slice(0, 3).toUpperCase()}-${String(MOCK_TICKETS.length + 1).padStart(3, '0')}`;
+      MOCK_TICKETS.unshift({
+        ...payload,
+        id: fakeId,
+        submittedAt: new Date().toISOString(),
+        assignedTo: null,
+        assignedToId: null,
+        status: 'Submitted',
+        priority: form.complianceRisk === 'Yes' ? 'P0' : 'P3',
+        sla: { responseHours: 24, resolutionHours: 168, elapsed: 0, state: 'on-track', daysOpen: 0 },
+        coeEffortDays: 0,
+        scores: { peopleScore: 0, freqScore: 0, timeScore: 0, costScore: 0, composite: 0 },
+        composite: 0, rank: MOCK_TICKETS.length + 1,
+        testEvidence: [], childrenIds: [], tags: [],
+      });
+      toast.success(`Issue submitted — Ticket ID ${fakeId} (offline)`);
+      navigate('/dashboard');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -344,8 +394,8 @@ export default function IssueSubmission() {
                 Next <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             ) : (
-              <Button onClick={handleSubmit} className="bg-red-600 hover:bg-red-700" data-testid="form-submit-btn">
-                <FileText className="mr-1 h-4 w-4" /> Submit issue
+              <Button onClick={handleSubmit} disabled={submitting} className="bg-red-600 hover:bg-red-700" data-testid="form-submit-btn">
+                <FileText className="mr-1 h-4 w-4" /> {submitting ? 'Submitting…' : 'Submit issue'}
               </Button>
             )}
           </div>

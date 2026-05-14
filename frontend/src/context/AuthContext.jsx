@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { MOCK_USERS } from '../data/mockData';
+import { api } from '../lib/api';
 
 const AuthContext = createContext(null);
 
@@ -20,14 +21,24 @@ export const AuthProvider = ({ children }) => {
     else localStorage.removeItem(STORAGE_KEY);
   }, [user]);
 
-  const login = ({ email, password }) => {
-    const found = MOCK_USERS.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
-    if (!found) return { ok: false, error: 'Invalid email or password' };
-    const { password: _pw, ...safe } = found;
-    setUser(safe);
-    return { ok: true, user: safe };
+  // Try the backend first; fall back to in-bundle MOCK_USERS if the API is
+  // unavailable (no Supabase, offline preview, etc.).
+  const login = async ({ email, password }) => {
+    try {
+      const { user: u } = await api.login(email, password);
+      const safe = { ...u };
+      delete safe.password;
+      setUser(safe);
+      return { ok: true, user: safe };
+    } catch (e) {
+      const found = MOCK_USERS.find(
+        (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+      );
+      if (!found) return { ok: false, error: 'Invalid email or password' };
+      const { password: _pw, ...safe } = found;
+      setUser(safe);
+      return { ok: true, user: safe };
+    }
   };
 
   const loginAs = (userId) => {

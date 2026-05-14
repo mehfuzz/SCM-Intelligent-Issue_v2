@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { Toaster } from './components/ui/sonner';
+import { hydrateFromApi } from './lib/hydrate';
 
 import Login from './pages/Login';
 import HomeDashboard from './pages/HomeDashboard';
@@ -24,9 +26,33 @@ const RootRedirect = () => {
   return <Navigate to={user ? '/dashboard' : '/login'} replace />;
 };
 
+const SplashScreen = () => (
+  <div className="flex items-center justify-center min-h-screen bg-white">
+    <div className="text-center">
+      <div className="airtel-grad inline-flex h-12 w-12 items-center justify-center rounded-md text-white font-display font-extrabold text-xl">a</div>
+      <p className="mt-4 text-sm text-gray-500">Loading SCM workspace…</p>
+    </div>
+  </div>
+);
+
 function App() {
+  const [ready, setReady] = useState(false);
+  const [usingLiveApi, setUsingLiveApi] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    hydrateFromApi().then(({ available }) => {
+      if (cancelled) return;
+      setUsingLiveApi(Boolean(available));
+      setReady(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!ready) return <SplashScreen />;
+
   return (
-    <div className="App">
+    <div className="App" data-live-api={usingLiveApi ? '1' : '0'}>
       <AuthProvider>
         <BrowserRouter>
           <Routes>

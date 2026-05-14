@@ -6,6 +6,7 @@ import {
   ticketsToCSV, downloadCSV,
 } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -53,6 +54,10 @@ export default function CoeWorkbench() {
     setTickets((prev) => prev.map((t) => t.id === ticketId ? { ...t, ...patch } : t));
     log(ticketId, fieldLabel, beforeValue, afterValue);
     toast.success(`${ticketId}: ${fieldLabel} updated`);
+    // Fire-and-forget persistence; failures fall back to in-memory only.
+    api.patchTicket(ticketId, patch).catch((err) => {
+      console.warn('[workbench] persistence failed', err);
+    });
   };
 
   const changePriority = (ticketId, priority) => {

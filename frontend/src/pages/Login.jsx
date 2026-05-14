@@ -19,9 +19,9 @@ export default function Login() {
 
   if (user) return <Navigate to="/dashboard" replace />;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const res = login({ email, password });
+    const res = await login({ email, password });
     if (!res.ok) {
       toast.error(res.error || 'Login failed');
       return;
