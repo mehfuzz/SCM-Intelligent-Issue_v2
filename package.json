@@ -2,6 +2,7 @@
   "name": "scm-intelligent-issue",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Airtel SCM Issue Intelligence & Workflow Management Portal — Vercel serverless backend + React frontend, Supabase database.",
   "scripts": {
     "vercel-build": "cd frontend && npm install --legacy-peer-deps && npm run build",
