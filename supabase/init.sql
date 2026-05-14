@@ -1,38 +1,55 @@
 -- One-shot bootstrap for a fresh Supabase project.
 -- Equivalent to running supabase/migrations/0001_init.sql then
 -- supabase/seed.sql in sequence. Paste & run in the Supabase SQL Editor.
+-- This file is idempotent — safe to re-run on a partially or fully
+-- initialised database.
 
 -- SCM Issue Intelligence — initial schema
 -- Mirrors the framework's Issue Log + Prioritisation Parameters sheets.
 --
 -- Run this BEFORE seed.sql. If you prefer a single paste, use
 -- supabase/init.sql which concatenates both.
+--
+-- This script is idempotent — re-running it on a partially or fully
+-- initialised database is safe.
 
 -- pgcrypto is required for gen_random_uuid(). Supabase ships it but the
 -- function lives in the `extensions` schema; this guarantees it is loadable.
 create extension if not exists pgcrypto;
 
 -- ============================================================================
--- Enum types
+-- Enum types (Postgres has no CREATE TYPE IF NOT EXISTS — guard each one)
 -- ============================================================================
-create type ticket_status as enum (
-  'Submitted','Triaged','POC Assigned','In Progress','Pending Validation','Closed','Reopened'
-);
+do $$ begin
+  create type ticket_status as enum (
+    'Submitted','Triaged','POC Assigned','In Progress','Pending Validation','Closed','Reopened'
+  );
+exception when duplicate_object then null; end $$;
 
-create type ticket_priority as enum ('P0','P1','P2','P3');
+do $$ begin
+  create type ticket_priority as enum ('P0','P1','P2','P3');
+exception when duplicate_object then null; end $$;
 
-create type compliance_flag as enum ('Yes','No');
+do $$ begin
+  create type compliance_flag as enum ('Yes','No');
+exception when duplicate_object then null; end $$;
 
-create type frequency_band as enum ('Daily','Weekly','Monthly','Ad-hoc');
+do $$ begin
+  create type frequency_band as enum ('Daily','Weekly','Monthly','Ad-hoc');
+exception when duplicate_object then null; end $$;
 
-create type sla_state as enum ('on-track','at-risk','breached');
+do $$ begin
+  create type sla_state as enum ('on-track','at-risk','breached');
+exception when duplicate_object then null; end $$;
 
-create type user_role as enum ('Submitter','COE Admin','POC Owner','Leadership','System Admin');
+do $$ begin
+  create type user_role as enum ('Submitter','COE Admin','POC Owner','Leadership','System Admin');
+exception when duplicate_object then null; end $$;
 
 -- ============================================================================
 -- Users (mock login — no Supabase Auth, kept as a plain table)
 -- ============================================================================
-create table app_users (
+create table if not exists app_users (
   id              text primary key,
   name            text not null,
   email           text not null unique,
@@ -46,7 +63,7 @@ create table app_users (
 -- ============================================================================
 -- Tickets
 -- ============================================================================
-create table tickets (
+create table if not exists tickets (
   id                    text primary key,
   title                 text not null,
   module                text not null,
@@ -89,15 +106,15 @@ create table tickets (
   updated_at            timestamptz default now()
 );
 
-create index tickets_assigned_to_idx on tickets(assigned_to_id);
-create index tickets_submitted_by_idx on tickets(submitted_by_id);
-create index tickets_status_idx on tickets(status);
-create index tickets_priority_idx on tickets(priority);
+create index if not exists tickets_assigned_to_idx on tickets(assigned_to_id);
+create index if not exists tickets_submitted_by_idx on tickets(submitted_by_id);
+create index if not exists tickets_status_idx on tickets(status);
+create index if not exists tickets_priority_idx on tickets(priority);
 
 -- ============================================================================
 -- Audit trail
 -- ============================================================================
-create table audit_log (
+create table if not exists audit_log (
   id          uuid primary key default gen_random_uuid(),
   ticket_id   text references tickets(id) on delete cascade,
   at          timestamptz not null default now(),
@@ -110,12 +127,12 @@ create table audit_log (
   note        text
 );
 
-create index audit_log_ticket_idx on audit_log(ticket_id, at desc);
+create index if not exists audit_log_ticket_idx on audit_log(ticket_id, at desc);
 
 -- ============================================================================
 -- Comments
 -- ============================================================================
-create table comments (
+create table if not exists comments (
   id          uuid primary key default gen_random_uuid(),
   ticket_id   text not null references tickets(id) on delete cascade,
   author_id   text references app_users(id) on delete set null,
@@ -125,12 +142,12 @@ create table comments (
   at          timestamptz not null default now()
 );
 
-create index comments_ticket_idx on comments(ticket_id, at desc);
+create index if not exists comments_ticket_idx on comments(ticket_id, at desc);
 
 -- ============================================================================
 -- Test evidence (screenshots/links for submitter validation)
 -- ============================================================================
-create table test_evidence (
+create table if not exists test_evidence (
   id          uuid primary key default gen_random_uuid(),
   ticket_id   text not null references tickets(id) on delete cascade,
   label       text not null,
@@ -139,12 +156,12 @@ create table test_evidence (
   at          timestamptz not null default now()
 );
 
-create index test_evidence_ticket_idx on test_evidence(ticket_id);
+create index if not exists test_evidence_ticket_idx on test_evidence(ticket_id);
 
 -- ============================================================================
 -- Notifications
 -- ============================================================================
-create table notifications (
+create table if not exists notifications (
   id          uuid primary key default gen_random_uuid(),
   user_id     text references app_users(id) on delete cascade,
   type        text not null,
@@ -155,12 +172,12 @@ create table notifications (
   read        boolean default false
 );
 
-create index notifications_user_idx on notifications(user_id, at desc);
+create index if not exists notifications_user_idx on notifications(user_id, at desc);
 
 -- ============================================================================
 -- BRDs
 -- ============================================================================
-create table brds (
+create table if not exists brds (
   id          text primary key,
   ticket_id   text references tickets(id) on delete set null,
   title       text not null,
@@ -183,9 +200,11 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists tickets_set_updated_at on tickets;
 create trigger tickets_set_updated_at before update on tickets
   for each row execute function set_updated_at();
 
+drop trigger if exists brds_set_updated_at on brds;
 create trigger brds_set_updated_at before update on brds
   for each row execute function set_updated_at();
 
@@ -347,50 +366,67 @@ insert into tickets (
 on conflict (id) do nothing;
 
 -- ----------------------------------------------------------------------------
--- Test evidence for the closed Vendor Master Cleanup ticket
+-- Test evidence, comments, audit log, notifications, BRD sample
+--
+-- These tables use auto-generated UUID primary keys, so a naive INSERT would
+-- duplicate rows on re-run. Guard them by checking whether the seed has
+-- already been applied (we use the presence of the canonical Submitter user
+-- as the sentinel — that row is inserted above via ON CONFLICT DO NOTHING,
+-- so it's the right anchor for "seed applied?").
 -- ----------------------------------------------------------------------------
-insert into test_evidence (ticket_id, label, url, uploaded_by) values
-  ('SCM-VND-011','Dedup before/after screenshot','https://airtel.sharepoint.com/scm/dedup-screenshot.png','Amit Singh'),
-  ('SCM-VND-011','UAT environment link',         'https://uat.scm.airtel.in/vendor-master',            'Amit Singh');
+do $seed_dependents$
+declare
+  v_seeded boolean;
+begin
+  select exists (
+    select 1
+    from test_evidence te
+    where te.ticket_id = 'SCM-VND-011'
+  ) into v_seeded;
 
--- ----------------------------------------------------------------------------
--- Comments + Audit log samples
--- ----------------------------------------------------------------------------
-insert into comments (ticket_id, author_id, author, author_role, body, at) values
-  ('SCM-SOW-001','u2','Priya Sharma','COE Admin','Confirmed SLA breach; escalating to POC Owner.','2026-04-12 11:30+00'),
-  ('SCM-SOW-001','u6','Kushal Soni','POC Owner','Drafted workflow change. Will share BRD by EOD.', '2026-04-15 17:45+00'),
-  ('SCM-PO-004', 'u2','Priya Sharma','COE Admin','P0 by compliance override — duplicate payment risk.','2026-04-16 09:00+00');
+  if v_seeded then
+    raise notice 'Seed dependents already loaded — skipping.';
+    return;
+  end if;
 
-insert into audit_log (ticket_id, at, actor_id, actor_name, action, field, before_val, after_val) values
-  ('SCM-SOW-001','2026-04-10 09:00+00','u9','Akram Raza',  'Issue submitted',     null,            null,           null),
-  ('SCM-SOW-001','2026-04-10 09:01+00',null,'System',      'Auto-prioritisation', 'Priority',      null,           'P1'),
-  ('SCM-SOW-001','2026-04-11 10:15+00','u2','Priya Sharma','Status change',       'Status',        'Submitted',    'Triaged'),
-  ('SCM-SOW-001','2026-04-12 11:32+00','u2','Priya Sharma','Assigned POC',        'Assigned To',   '—',            'Kushal Soni'),
-  ('SCM-SOW-001','2026-04-13 09:00+00','u6','Kushal Soni', 'Status change',       'Status',        'POC Assigned', 'In Progress'),
-  ('SCM-PO-004', '2026-04-15 09:00+00','u7','Shikha Aggarwal','Issue submitted',  null,            null,           null),
-  ('SCM-PO-004', '2026-04-15 09:01+00',null,'System',      'Priority Zero Override','Priority',    null,           'P0');
+  insert into test_evidence (ticket_id, label, url, uploaded_by) values
+    ('SCM-VND-011','Dedup before/after screenshot','https://airtel.sharepoint.com/scm/dedup-screenshot.png','Amit Singh'),
+    ('SCM-VND-011','UAT environment link',         'https://uat.scm.airtel.in/vendor-master',            'Amit Singh');
 
--- ----------------------------------------------------------------------------
--- Notifications + BRD sample
--- ----------------------------------------------------------------------------
-insert into notifications (user_id, type, title, message, ticket_id, at, read) values
-  ('u9','sla_breach', 'SLA Breached',      'SCM-SOW-001 has breached resolution SLA','SCM-SOW-001','2026-04-13 09:00+00',false),
-  ('u8','assignment', 'New Assignment',    'SCM-PR-009 has been assigned to you',     'SCM-PR-009', '2026-04-24 09:35+00',false),
-  ('u9','comment',    'New Comment',       'Kushal Soni commented on SCM-SOW-001',    'SCM-SOW-001','2026-04-15 17:45+00',true),
-  ('u1','validation', 'Validation Needed', 'SCM-VND-011 is ready for your validation','SCM-VND-011','2026-04-25 14:00+00',false),
-  ('u8','sla_at_risk','SLA At Risk',       'SCM-VND-002 is approaching resolution SLA','SCM-VND-002','2026-04-26 08:00+00',false);
+  insert into comments (ticket_id, author_id, author, author_role, body, at) values
+    ('SCM-SOW-001','u2','Priya Sharma','COE Admin','Confirmed SLA breach; escalating to POC Owner.','2026-04-12 11:30+00'),
+    ('SCM-SOW-001','u6','Kushal Soni','POC Owner','Drafted workflow change. Will share BRD by EOD.', '2026-04-15 17:45+00'),
+    ('SCM-PO-004', 'u2','Priya Sharma','COE Admin','P0 by compliance override — duplicate payment risk.','2026-04-16 09:00+00');
 
-insert into brds (id, ticket_id, title, status, version, sections, versions) values
-  ('BRD-004','SCM-PO-004','BRD — PO/GRN 3-way Match Enforcement','Approved','v1.1',
-   jsonb_build_object(
-     'Background','Four confirmed duplicate-payment cases traced to PO/GRN mismatches in Q1.',
-     'Objective','Eliminate duplicate payments via enforced 3-way match in ERP.',
-     'Scope','PO module — Invoice matching only.',
-     'Functional Requirements','1. Block invoice payment if PO/GRN/Invoice qty/value mismatch.\n2. Daily exception report to AP.\n3. Audit log for every override.',
-     'Acceptance Criteria','• Zero duplicate payments in 30-day window.\n• 100% exception coverage in daily report.',
-     'Risks & Dependencies','Oracle EBS patch level; finance team training.'
-   ),
-   jsonb_build_array(
-     jsonb_build_object('v','v1.0','at','2026-04-16T09:00:00Z','by','AI Draft'),
-     jsonb_build_object('v','v1.1','at','2026-04-17T11:20:00Z','by','Varun Mehta')
-   ));
+  insert into audit_log (ticket_id, at, actor_id, actor_name, action, field, before_val, after_val) values
+    ('SCM-SOW-001','2026-04-10 09:00+00','u9','Akram Raza',  'Issue submitted',     null,            null,           null),
+    ('SCM-SOW-001','2026-04-10 09:01+00',null,'System',      'Auto-prioritisation', 'Priority',      null,           'P1'),
+    ('SCM-SOW-001','2026-04-11 10:15+00','u2','Priya Sharma','Status change',       'Status',        'Submitted',    'Triaged'),
+    ('SCM-SOW-001','2026-04-12 11:32+00','u2','Priya Sharma','Assigned POC',        'Assigned To',   '—',            'Kushal Soni'),
+    ('SCM-SOW-001','2026-04-13 09:00+00','u6','Kushal Soni', 'Status change',       'Status',        'POC Assigned', 'In Progress'),
+    ('SCM-PO-004', '2026-04-15 09:00+00','u7','Shikha Aggarwal','Issue submitted',  null,            null,           null),
+    ('SCM-PO-004', '2026-04-15 09:01+00',null,'System',      'Priority Zero Override','Priority',    null,           'P0');
+
+  insert into notifications (user_id, type, title, message, ticket_id, at, read) values
+    ('u9','sla_breach', 'SLA Breached',      'SCM-SOW-001 has breached resolution SLA','SCM-SOW-001','2026-04-13 09:00+00',false),
+    ('u8','assignment', 'New Assignment',    'SCM-PR-009 has been assigned to you',     'SCM-PR-009', '2026-04-24 09:35+00',false),
+    ('u9','comment',    'New Comment',       'Kushal Soni commented on SCM-SOW-001',    'SCM-SOW-001','2026-04-15 17:45+00',true),
+    ('u1','validation', 'Validation Needed', 'SCM-VND-011 is ready for your validation','SCM-VND-011','2026-04-25 14:00+00',false),
+    ('u8','sla_at_risk','SLA At Risk',       'SCM-VND-002 is approaching resolution SLA','SCM-VND-002','2026-04-26 08:00+00',false);
+
+  insert into brds (id, ticket_id, title, status, version, sections, versions) values
+    ('BRD-004','SCM-PO-004','BRD — PO/GRN 3-way Match Enforcement','Approved','v1.1',
+     jsonb_build_object(
+       'Background','Four confirmed duplicate-payment cases traced to PO/GRN mismatches in Q1.',
+       'Objective','Eliminate duplicate payments via enforced 3-way match in ERP.',
+       'Scope','PO module — Invoice matching only.',
+       'Functional Requirements','1. Block invoice payment if PO/GRN/Invoice qty/value mismatch.\n2. Daily exception report to AP.\n3. Audit log for every override.',
+       'Acceptance Criteria','• Zero duplicate payments in 30-day window.\n• 100% exception coverage in daily report.',
+       'Risks & Dependencies','Oracle EBS patch level; finance team training.'
+     ),
+     jsonb_build_array(
+       jsonb_build_object('v','v1.0','at','2026-04-16T09:00:00Z','by','AI Draft'),
+       jsonb_build_object('v','v1.1','at','2026-04-17T11:20:00Z','by','Varun Mehta')
+     ))
+  on conflict (id) do nothing;
+end $seed_dependents$;

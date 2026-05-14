@@ -3,32 +3,47 @@
 --
 -- Run this BEFORE seed.sql. If you prefer a single paste, use
 -- supabase/init.sql which concatenates both.
+--
+-- This script is idempotent — re-running it on a partially or fully
+-- initialised database is safe.
 
 -- pgcrypto is required for gen_random_uuid(). Supabase ships it but the
 -- function lives in the `extensions` schema; this guarantees it is loadable.
 create extension if not exists pgcrypto;
 
 -- ============================================================================
--- Enum types
+-- Enum types (Postgres has no CREATE TYPE IF NOT EXISTS — guard each one)
 -- ============================================================================
-create type ticket_status as enum (
-  'Submitted','Triaged','POC Assigned','In Progress','Pending Validation','Closed','Reopened'
-);
+do $$ begin
+  create type ticket_status as enum (
+    'Submitted','Triaged','POC Assigned','In Progress','Pending Validation','Closed','Reopened'
+  );
+exception when duplicate_object then null; end $$;
 
-create type ticket_priority as enum ('P0','P1','P2','P3');
+do $$ begin
+  create type ticket_priority as enum ('P0','P1','P2','P3');
+exception when duplicate_object then null; end $$;
 
-create type compliance_flag as enum ('Yes','No');
+do $$ begin
+  create type compliance_flag as enum ('Yes','No');
+exception when duplicate_object then null; end $$;
 
-create type frequency_band as enum ('Daily','Weekly','Monthly','Ad-hoc');
+do $$ begin
+  create type frequency_band as enum ('Daily','Weekly','Monthly','Ad-hoc');
+exception when duplicate_object then null; end $$;
 
-create type sla_state as enum ('on-track','at-risk','breached');
+do $$ begin
+  create type sla_state as enum ('on-track','at-risk','breached');
+exception when duplicate_object then null; end $$;
 
-create type user_role as enum ('Submitter','COE Admin','POC Owner','Leadership','System Admin');
+do $$ begin
+  create type user_role as enum ('Submitter','COE Admin','POC Owner','Leadership','System Admin');
+exception when duplicate_object then null; end $$;
 
 -- ============================================================================
 -- Users (mock login — no Supabase Auth, kept as a plain table)
 -- ============================================================================
-create table app_users (
+create table if not exists app_users (
   id              text primary key,
   name            text not null,
   email           text not null unique,
@@ -42,7 +57,7 @@ create table app_users (
 -- ============================================================================
 -- Tickets
 -- ============================================================================
-create table tickets (
+create table if not exists tickets (
   id                    text primary key,
   title                 text not null,
   module                text not null,
@@ -85,15 +100,15 @@ create table tickets (
   updated_at            timestamptz default now()
 );
 
-create index tickets_assigned_to_idx on tickets(assigned_to_id);
-create index tickets_submitted_by_idx on tickets(submitted_by_id);
-create index tickets_status_idx on tickets(status);
-create index tickets_priority_idx on tickets(priority);
+create index if not exists tickets_assigned_to_idx on tickets(assigned_to_id);
+create index if not exists tickets_submitted_by_idx on tickets(submitted_by_id);
+create index if not exists tickets_status_idx on tickets(status);
+create index if not exists tickets_priority_idx on tickets(priority);
 
 -- ============================================================================
 -- Audit trail
 -- ============================================================================
-create table audit_log (
+create table if not exists audit_log (
   id          uuid primary key default gen_random_uuid(),
   ticket_id   text references tickets(id) on delete cascade,
   at          timestamptz not null default now(),
@@ -106,12 +121,12 @@ create table audit_log (
   note        text
 );
 
-create index audit_log_ticket_idx on audit_log(ticket_id, at desc);
+create index if not exists audit_log_ticket_idx on audit_log(ticket_id, at desc);
 
 -- ============================================================================
 -- Comments
 -- ============================================================================
-create table comments (
+create table if not exists comments (
   id          uuid primary key default gen_random_uuid(),
   ticket_id   text not null references tickets(id) on delete cascade,
   author_id   text references app_users(id) on delete set null,
@@ -121,12 +136,12 @@ create table comments (
   at          timestamptz not null default now()
 );
 
-create index comments_ticket_idx on comments(ticket_id, at desc);
+create index if not exists comments_ticket_idx on comments(ticket_id, at desc);
 
 -- ============================================================================
 -- Test evidence (screenshots/links for submitter validation)
 -- ============================================================================
-create table test_evidence (
+create table if not exists test_evidence (
   id          uuid primary key default gen_random_uuid(),
   ticket_id   text not null references tickets(id) on delete cascade,
   label       text not null,
@@ -135,12 +150,12 @@ create table test_evidence (
   at          timestamptz not null default now()
 );
 
-create index test_evidence_ticket_idx on test_evidence(ticket_id);
+create index if not exists test_evidence_ticket_idx on test_evidence(ticket_id);
 
 -- ============================================================================
 -- Notifications
 -- ============================================================================
-create table notifications (
+create table if not exists notifications (
   id          uuid primary key default gen_random_uuid(),
   user_id     text references app_users(id) on delete cascade,
   type        text not null,
@@ -151,12 +166,12 @@ create table notifications (
   read        boolean default false
 );
 
-create index notifications_user_idx on notifications(user_id, at desc);
+create index if not exists notifications_user_idx on notifications(user_id, at desc);
 
 -- ============================================================================
 -- BRDs
 -- ============================================================================
-create table brds (
+create table if not exists brds (
   id          text primary key,
   ticket_id   text references tickets(id) on delete set null,
   title       text not null,
@@ -179,9 +194,11 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists tickets_set_updated_at on tickets;
 create trigger tickets_set_updated_at before update on tickets
   for each row execute function set_updated_at();
 
+drop trigger if exists brds_set_updated_at on brds;
 create trigger brds_set_updated_at before update on brds
   for each row execute function set_updated_at();
 
