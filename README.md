@@ -118,7 +118,47 @@ vercel dev             # runs SPA + /api/* together at http://localhost:3000
 4. Deploy. The SPA is served from `frontend/build`; `/api/*` paths route to
    the serverless functions automatically.
 
-## Demo credentials
+## Troubleshooting
+
+### "Data isn't being saved — refreshing wipes everything"
+
+The SPA is running in **demo mode** (using bundled mock data instead of
+Supabase). Edits live in React state only and disappear on reload. The
+yellow banner at the top of the page should tell you why; you can also
+hit `/api/health` directly for full diagnostic output, e.g.
+
+```json
+{
+  "ok": true,
+  "supabaseConfigured": false,
+  "missingEnvVars": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
+  "dbReachable": false,
+  "userCount": null,
+  "schemaApplied": false,
+  "hint": "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel project settings, then redeploy."
+}
+```
+
+Common causes & fixes:
+
+| `/api/health` says…                                            | What to do                                                                 |
+|----------------------------------------------------------------|----------------------------------------------------------------------------|
+| `missingEnvVars: ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]`| Add both env vars in **Vercel → Project Settings → Environment Variables**, then **Redeploy** (env-var changes don't auto-redeploy). |
+| `dbReachable: false, dbError: "..."` | Wrong URL/key, or the Supabase project is paused. Double-check the values from **Supabase → Project Settings → API**. |
+| `userCount: 0, schemaApplied: false` | Schema hasn't been loaded. Open the **Supabase SQL Editor** and run `supabase/init.sql`. |
+| `dbReachable: true, userCount > 0`   | Backend is healthy — the banner should be gone. If it isn't, hard-reload the page. |
+
+### Vars are set but writes still don't stick
+
+1. Check the browser DevTools **Network** tab. POST/PATCH calls to
+   `/api/tickets`, `/api/audit`, etc. should return 200/201. If they
+   return 500, the response body will say why (usually an RLS / type /
+   FK error).
+2. Make sure you used the **service role** key, not the anon key — the
+   server-side functions bypass RLS via the service role. The anon key
+   will hit RLS and be silently denied on every write.
+
+### Demo credentials
 
 | Role       | Email                       | Password |
 |------------|-----------------------------|----------|

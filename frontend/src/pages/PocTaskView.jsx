@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
+import { isLiveApi } from '../lib/hydrate';
 import {
   MOCK_TICKETS, STATUSES, formatINR, formatDate, linearRank,
   ticketsToCSV, downloadCSV,
@@ -46,8 +47,16 @@ export default function PocTaskView() {
     }, ...prev]);
   };
 
-  const persist = (ticketId, patch) =>
-    api.patchTicket(ticketId, patch).catch((err) => console.warn('[poc] persistence failed', err));
+  const persist = (ticketId, patch, label) => {
+    if (!isLiveApi()) {
+      toast.warning(`${ticketId}: ${label || 'change'} saved locally — not persisted (demo mode)`);
+      return Promise.resolve();
+    }
+    return api.patchTicket(ticketId, patch).catch((err) => {
+      console.warn('[poc] persistence failed', err);
+      toast.error(`${ticketId}: save failed — ${err?.message || 'API error'}`);
+    });
+  };
 
   const changeStatus = (ticketId, status) => {
     const t = tickets.find((x) => x.id === ticketId);
@@ -55,7 +64,7 @@ export default function PocTaskView() {
     setTickets((prev) => prev.map((x) => x.id === ticketId ? { ...x, status } : x));
     log(ticketId, 'Status', t.status, status);
     toast.success(`${ticketId}: Status → ${status}`);
-    persist(ticketId, { status });
+    persist(ticketId, { status }, 'Status');
   };
 
   const changeEffort = (ticketId, days) => {
@@ -65,7 +74,7 @@ export default function PocTaskView() {
     setTickets((prev) => prev.map((x) => x.id === ticketId ? { ...x, coeEffortDays: next } : x));
     log(ticketId, 'COE Effort (days)', t.coeEffortDays ?? '—', next);
     toast.success(`${ticketId}: COE effort → ${next}d`);
-    persist(ticketId, { coeEffortDays: next });
+    persist(ticketId, { coeEffortDays: next }, 'COE effort');
   };
 
   const submitSlaChange = () => {
@@ -79,8 +88,7 @@ export default function PocTaskView() {
     ));
     log(ticket.id, 'SLA (resolution hrs)', ticket.sla?.resolutionHours ?? '—', hoursNum, comment);
     toast.success(`${ticket.id}: SLA updated`);
-    api.patchTicket(ticket.id, { sla: { resolutionHours: hoursNum }, note: comment })
-      .catch((err) => console.warn('[poc] persistence failed', err));
+    persist(ticket.id, { sla: { resolutionHours: hoursNum }, note: comment }, 'SLA');
     setSlaDialog(null);
   };
 

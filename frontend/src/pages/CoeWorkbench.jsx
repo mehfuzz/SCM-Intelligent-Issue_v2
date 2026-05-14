@@ -7,6 +7,7 @@ import {
 } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
+import { isLiveApi } from '../lib/hydrate';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -53,11 +54,17 @@ export default function CoeWorkbench() {
   const updateTicket = (ticketId, patch, fieldLabel, beforeValue, afterValue) => {
     setTickets((prev) => prev.map((t) => t.id === ticketId ? { ...t, ...patch } : t));
     log(ticketId, fieldLabel, beforeValue, afterValue);
-    toast.success(`${ticketId}: ${fieldLabel} updated`);
-    // Fire-and-forget persistence; failures fall back to in-memory only.
-    api.patchTicket(ticketId, patch).catch((err) => {
-      console.warn('[workbench] persistence failed', err);
-    });
+
+    if (!isLiveApi()) {
+      toast.warning(`${ticketId}: ${fieldLabel} updated locally — not persisted (demo mode)`);
+      return;
+    }
+    api.patchTicket(ticketId, patch)
+      .then(() => toast.success(`${ticketId}: ${fieldLabel} updated`))
+      .catch((err) => {
+        console.warn('[workbench] persistence failed', err);
+        toast.error(`${ticketId}: failed to save ${fieldLabel} — ${err?.message || 'API error'}`);
+      });
   };
 
   const changePriority = (ticketId, priority) => {

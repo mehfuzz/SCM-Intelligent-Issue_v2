@@ -4,7 +4,7 @@
 // because hydration completes BEFORE the first page renders.
 
 import * as mock from '../data/mockData';
-import { api, isApiAvailable } from './api';
+import { api, fetchHealth } from './api';
 
 const replace = (arr, items) => {
   if (!Array.isArray(arr) || !Array.isArray(items)) return;
@@ -17,10 +17,21 @@ const replaceObject = (target, src) => {
   Object.assign(target, src || {});
 };
 
+// Module-scoped flag so non-React code (writes) can check whether to attempt
+// API persistence. Reads inside React components should still use the
+// useDataMode() hook from DataMode.jsx for re-rendering.
+let _liveApi = false;
+export const isLiveApi = () => _liveApi;
+
 export const hydrateFromApi = async () => {
-  const available = await isApiAvailable();
+  const health = await fetchHealth();
+  const available = Boolean(
+    health?.ok && health?.supabaseConfigured && health?.dbReachable && health?.schemaApplied
+  );
+
   if (!available) {
-    return { available: false };
+    _liveApi = false;
+    return { available: false, health };
   }
 
   try {
@@ -54,9 +65,11 @@ export const hydrateFromApi = async () => {
     replaceObject(mock.MOCK_AUDIT,    {});
     replace(mock.MOCK_NOTIFICATIONS, []);
 
-    return { available: true };
+    _liveApi = true;
+    return { available: true, health };
   } catch (err) {
     console.warn('[hydrate] API hydration failed; falling back to bundled mocks.', err);
-    return { available: false, error: err };
+    _liveApi = false;
+    return { available: false, error: err, health };
   }
 };

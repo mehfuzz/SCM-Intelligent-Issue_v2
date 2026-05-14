@@ -89,14 +89,21 @@ export const api = {
   }),
 };
 
-// Best-effort check used by the boot-time data hydrator. Treats any error as
-// "use the mock data baked into the bundle" so local dev without Supabase
-// keeps working.
-export const isApiAvailable = async () => {
+// Best-effort check used by the boot-time data hydrator. Returns the full
+// /api/health payload so the SPA can both decide whether to hydrate from
+// live data and surface a clear diagnostic banner when it can't.
+export const fetchHealth = async () => {
   try {
     const r = await fetch(`${BASE}/health`);
-    if (!r.ok) return false;
+    if (!r.ok) return { ok: false, reason: `health endpoint returned ${r.status}` };
     const j = await r.json();
-    return Boolean(j.ok && j.supabaseConfigured);
-  } catch { return false; }
+    return j;
+  } catch (e) {
+    return { ok: false, reason: e?.message || 'network error contacting /api/health' };
+  }
+};
+
+export const isApiAvailable = async () => {
+  const h = await fetchHealth();
+  return Boolean(h?.ok && h?.supabaseConfigured && h?.dbReachable && h?.schemaApplied);
 };

@@ -18,6 +18,7 @@ import {
   MODULES, FUNCTIONS, CATEGORIES, FREQUENCIES, MOCK_TICKETS, formatINR
 } from '../data/mockData';
 import { api } from '../lib/api';
+import { isLiveApi } from '../lib/hydrate';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -90,15 +91,8 @@ export default function IssueSubmission() {
       suggestedSolution: form.suggestedSolution,
       relatedTicketId:   form.relatedTicketId,
     };
-    try {
-      const created = await api.createTicket(payload);
-      toast.success(`Issue submitted — Ticket ID ${created.id}`);
-      // Optimistically prepend to the in-memory list so the user lands on
-      // a Home dashboard that already shows the new ticket.
-      MOCK_TICKETS.unshift(created);
-      navigate('/dashboard');
-    } catch (e) {
-      console.warn('[submit] API failed, falling back to in-memory only', e);
+
+    const localFallback = () => {
       const fakeId = `SCM-${(form.module || 'NEW').slice(0, 3).toUpperCase()}-${String(MOCK_TICKETS.length + 1).padStart(3, '0')}`;
       MOCK_TICKETS.unshift({
         ...payload,
@@ -114,7 +108,26 @@ export default function IssueSubmission() {
         composite: 0, rank: MOCK_TICKETS.length + 1,
         testEvidence: [], childrenIds: [], tags: [],
       });
-      toast.success(`Issue submitted — Ticket ID ${fakeId} (offline)`);
+      return fakeId;
+    };
+
+    if (!isLiveApi()) {
+      const id = localFallback();
+      toast.warning(`Demo mode: ${id} saved locally only — connect Supabase to persist.`);
+      setSubmitting(false);
+      navigate('/dashboard');
+      return;
+    }
+
+    try {
+      const created = await api.createTicket(payload);
+      toast.success(`Issue submitted — Ticket ID ${created.id}`);
+      MOCK_TICKETS.unshift(created);
+      navigate('/dashboard');
+    } catch (e) {
+      console.warn('[submit] API failed', e);
+      const id = localFallback();
+      toast.error(`Save failed (${e?.message || 'API error'}); kept locally as ${id}.`);
       navigate('/dashboard');
     } finally {
       setSubmitting(false);

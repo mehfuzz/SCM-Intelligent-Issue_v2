@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { Toaster } from './components/ui/sonner';
+import { DemoModeBanner } from './components/shared/DemoModeBanner';
 import { hydrateFromApi } from './lib/hydrate';
 
 import Login from './pages/Login';
@@ -38,12 +39,14 @@ const SplashScreen = () => (
 function App() {
   const [ready, setReady] = useState(false);
   const [usingLiveApi, setUsingLiveApi] = useState(false);
+  const [health, setHealth] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    hydrateFromApi().then(({ available }) => {
+    hydrateFromApi().then((res) => {
       if (cancelled) return;
-      setUsingLiveApi(Boolean(available));
+      setUsingLiveApi(Boolean(res?.available));
+      setHealth(res?.health || null);
       setReady(true);
     });
     return () => { cancelled = true; };
@@ -53,6 +56,7 @@ function App() {
 
   return (
     <div className="App" data-live-api={usingLiveApi ? '1' : '0'}>
+      {!usingLiveApi && <DemoModeBanner health={health} />}
       <AuthProvider>
         <BrowserRouter>
           <Routes>
