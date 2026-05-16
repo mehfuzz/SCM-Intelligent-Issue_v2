@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { to: '/issues/new', label: 'Submit Issue', icon: FilePlus2, roles: [ROLES.SUBMITTER, ROLES.COE_ADMIN, ROLES.SYSTEM_ADMIN], testid: 'nav-submit-issue' },
   { to: '/coe-workbench', label: 'COE Workbench', icon: Inbox, roles: [ROLES.COE_ADMIN], testid: 'nav-coe-workbench' },
   { to: '/poc-tasks', label: 'My Tasks', icon: ClipboardList, roles: [ROLES.POC_OWNER], testid: 'nav-poc-tasks' },
-  { to: '/brd', label: 'BRD Editor', icon: FileText, roles: [ROLES.POC_OWNER], testid: 'nav-brd' },
+  { to: '/brd', label: 'BRD Editor', icon: FileText, roles: [ROLES.POC_OWNER, ROLES.COE_ADMIN, ROLES.SUBMITTER], testid: 'nav-brd' },
   { to: '/sla-monitor', label: 'SLA Monitor', icon: Timer, roles: [ROLES.COE_ADMIN, ROLES.LEADERSHIP], testid: 'nav-sla-monitor' },
   { to: '/validate', label: 'Validation', icon: ShieldCheck, roles: [ROLES.SUBMITTER, ROLES.COE_ADMIN], testid: 'nav-validate' },
   { to: '/leadership', label: 'Leadership', icon: BarChart3, roles: [ROLES.LEADERSHIP], testid: 'nav-leadership' },

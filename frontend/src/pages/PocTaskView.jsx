@@ -4,8 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { isLiveApi } from '../lib/hydrate';
 import {
-  MOCK_TICKETS, STATUSES, formatINR, formatDate, linearRank,
-  ticketsToCSV, downloadCSV,
+  MOCK_TICKETS, MOCK_USERS, STATUSES, ROLES, IN_PROGRESS_SUBSTAGES_DEFAULT,
+  formatINR, formatDate, linearRank, ticketsToCSV, downloadCSV,
 } from '../data/mockData';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -20,7 +20,9 @@ import {
 } from '../components/ui/dialog';
 import { PriorityBadge, StatusBadge, SlaChip } from '../components/shared/Badges';
 import { toast } from 'sonner';
-import { Download, History, Table2, Timer, ClipboardList, Inbox } from 'lucide-react';
+import {
+  Download, History, Table2, Timer, ClipboardList, Inbox, ExternalLink,
+} from 'lucide-react';
 
 export default function PocTaskView() {
   const { user } = useAuth();
@@ -34,7 +36,16 @@ export default function PocTaskView() {
 
   const [tickets, setTickets] = useState(initial);
   const [audit, setAudit] = useState([]);
-  const [slaDialog, setSlaDialog] = useState(null); // { ticket, newSla, comment }
+  const [slaDialog, setSlaDialog] = useState(null); // { ticket, hours, comment, approver }
+  const [jiraDialog, setJiraDialog] = useState(null); // { ticket, jiraKey }
+
+  // Sub-stages a POC owner can pick after moving a ticket to "In Progress".
+  // Admins edit this list at runtime in Admin Console → Workflows.
+  const SUBSTAGES = IN_PROGRESS_SUBSTAGES_DEFAULT;
+  // People who can approve an SLA-change request (COE Admin + Leadership).
+  const approvers = MOCK_USERS.filter((u) =>
+    [ROLES.COE_ADMIN, ROLES.LEADERSHIP, ROLES.SYSTEM_ADMIN].includes(u.role)
+  );
 
   const ranked = useMemo(() => linearRank(tickets), [tickets]);
 
@@ -61,10 +72,23 @@ export default function PocTaskView() {
   const changeStatus = (ticketId, status) => {
     const t = tickets.find((x) => x.id === ticketId);
     if (!t || t.status === status) return;
-    setTickets((prev) => prev.map((x) => x.id === ticketId ? { ...x, status } : x));
+    // Setting to In Progress without a sub-stage? Default to first available.
+    const patch = status === 'In Progress'
+      ? { status, inProgressSubStage: t.inProgressSubStage || SUBSTAGES[0] }
+      : { status, inProgressSubStage: null };
+    setTickets((prev) => prev.map((x) => x.id === ticketId ? { ...x, ...patch } : x));
     log(ticketId, 'Status', t.status, status);
     toast.success(`${ticketId}: Status → ${status}`);
-    persist(ticketId, { status }, 'Status');
+    persist(ticketId, { status, notes: patch.inProgressSubStage ? `Sub-stage: ${patch.inProgressSubStage}` : t.notes }, 'Status');
+  };
+
+  const changeSubStage = (ticketId, sub) => {
+    const t = tickets.find((x) => x.id === ticketId);
+    if (!t || t.inProgressSubStage === sub) return;
+    setTickets((prev) => prev.map((x) => x.id === ticketId ? { ...x, inProgressSubStage: sub } : x));
+    log(ticketId, 'In-Progress sub-stage', t.inProgressSubStage ?? '—', sub);
+    toast.success(`${ticketId}: stage → ${sub}`);
+    persist(ticketId, { notes: `Sub-stage: ${sub}` }, 'In-Progress sub-stage');
   };
 
   const changeEffort = (ticketId, days) => {
@@ -77,19 +101,72 @@ export default function PocTaskView() {
     persist(ticketId, { coeEffortDays: next }, 'COE effort');
   };
 
+  const submitJira = () => {
+    if (!jiraDialog?.jiraKey?.trim()) { toast.error('JIRA key is required'); return; }
+    const { ticket, jiraKey } = jiraDialog;
+    setTickets((prev) => prev.map((x) => x.id === ticket.id ? { ...x, jiraKey } : x));
+    log(ticket.id, 'JIRA link', ticket.jiraKey ?? '—', jiraKey);
+    toast.success(`${ticket.id} linked to JIRA ${jiraKey}`);
+    persist(ticket.id, { notes: `JIRA: ${jiraKey}` }, 'JIRA link');
+    setJiraDialog(null);
+  };
+
+  // SLA change is no longer applied directly — POC sends an *approval request*
+  // to a selected COE Admin / Leadership user. Both sides are audited.
   const submitSlaChange = () => {
     if (!slaDialog) return;
-    const { ticket, hours, comment } = slaDialog;
+    const { ticket, hours, comment, approverId } = slaDialog;
     const hoursNum = Number(hours);
-    if (!hoursNum || hoursNum <= 0) { toast.error('Enter a valid SLA in hours'); return; }
-    if (!comment.trim())             { toast.error('A comment is required for SLA changes'); return; }
+    if (!hoursNum || hoursNum <= 0)  { toast.error('Enter a valid SLA in hours'); return; }
+    if (!comment.trim())              { toast.error('Justification comment is mandatory'); return; }
+    if (!approverId)                  { toast.error('Pick an approver'); return; }
+    const approver = approvers.find((a) => a.id === approverId);
+    if (!approver)                    { toast.error('Approver not found'); return; }
+
+    // Mark ticket as having a pending SLA-change request (rendered as a chip in UI)
     setTickets((prev) => prev.map((x) =>
-      x.id === ticket.id ? { ...x, sla: { ...x.sla, resolutionHours: hoursNum } } : x
+      x.id === ticket.id
+        ? { ...x, slaChangeRequest: {
+            requestedBy: user?.name, requestedById: user?.id,
+            requestedHours: hoursNum, justification: comment,
+            approverName: approver.name, approverId: approver.id,
+            requestedAt: new Date().toISOString(), status: 'Pending',
+          } }
+        : x
     ));
-    log(ticket.id, 'SLA (resolution hrs)', ticket.sla?.resolutionHours ?? '—', hoursNum, comment);
-    toast.success(`${ticket.id}: SLA updated`);
-    persist(ticket.id, { sla: { resolutionHours: hoursNum }, note: comment }, 'SLA');
+    log(
+      ticket.id,
+      'SLA change requested',
+      `${ticket.sla?.resolutionHours ?? '—'}h`,
+      `${hoursNum}h → ${approver.name}`,
+      comment
+    );
+    toast.success(`${ticket.id}: SLA change request sent to ${approver.name}`);
+    // Persist the request as a note + audit-log entry (not the SLA itself).
+    persist(ticket.id, { notes: `SLA-change requested to ${hoursNum}h, approver ${approver.name}: ${comment}` }, 'SLA-change request');
     setSlaDialog(null);
+  };
+
+  // Approver actions (rendered when current user is among approvers).
+  const decideSlaChange = (ticketId, decision) => {
+    const t = tickets.find((x) => x.id === ticketId);
+    if (!t?.slaChangeRequest) return;
+    const req = t.slaChangeRequest;
+    const next = {
+      ...t,
+      slaChangeRequest: { ...req, status: decision, decidedAt: new Date().toISOString(), decidedBy: user?.name },
+    };
+    if (decision === 'Approved') {
+      next.sla = { ...t.sla, resolutionHours: req.requestedHours };
+    }
+    setTickets((prev) => prev.map((x) => x.id === ticketId ? next : x));
+    log(ticketId, `SLA change ${decision.toLowerCase()}`, `${t.sla?.resolutionHours ?? '—'}h`, decision === 'Approved' ? `${req.requestedHours}h` : 'unchanged', `Decided by ${user?.name}`);
+    toast.success(`${ticketId}: SLA change ${decision.toLowerCase()}`);
+    if (decision === 'Approved') {
+      persist(ticketId, { sla: { resolutionHours: req.requestedHours }, note: `SLA approved by ${user?.name}` }, 'SLA approval');
+    } else {
+      persist(ticketId, { notes: `SLA change rejected by ${user?.name}` }, 'SLA rejection');
+    }
   };
 
   const exportCSV = () => {
@@ -135,10 +212,9 @@ export default function PocTaskView() {
                 <TableHeader>
                   <TableRow className="bg-gray-50 hover:bg-gray-50">
                     {[
-                      'Rank', 'Issue ID', 'Date', 'Module', 'Sub-Process', 'Category',
-                      'Title', 'Function', 'Frequency', 'People', 'Time (hrs/wk)',
-                      'Cost Saving', 'Compliance?', 'Composite', 'Priority',
-                      'Status', 'SLA (hrs)', 'COE Effort (d)', 'Days Open', 'SLA Status',
+                      'Rank', 'Issue ID', 'Module', 'Title', 'Compliance?',
+                      'Composite', 'Priority', 'Status', 'In-Progress sub-stage',
+                      'SLA (hrs)', 'COE Effort (d)', 'JIRA', 'SLA Status',
                     ].map((h) => <TableHead key={h} className="text-[11px] whitespace-nowrap">{h}</TableHead>)}
                   </TableRow>
                 </TableHeader>
@@ -147,16 +223,15 @@ export default function PocTaskView() {
                     <TableRow key={t.id} className="hover:bg-gray-50 text-xs" data-testid={`poc-log-row-${t.id}`}>
                       <TableCell className="font-bold">{t.rank}</TableCell>
                       <TableCell className="font-mono-airtel cursor-pointer text-red-700" onClick={() => navigate(`/tickets/${t.id}`)}>{t.id}</TableCell>
-                      <TableCell>{formatDate(t.submittedAt)}</TableCell>
                       <TableCell>{t.module}</TableCell>
-                      <TableCell>{t.subProcess}</TableCell>
-                      <TableCell>{t.category}</TableCell>
-                      <TableCell className="max-w-[220px] truncate" title={t.title}>{t.title}</TableCell>
-                      <TableCell>{t.function}</TableCell>
-                      <TableCell>{t.impact.frequency}</TableCell>
-                      <TableCell>{t.impact.peopleAffected}</TableCell>
-                      <TableCell>{t.impact.hoursLostPerWeek}</TableCell>
-                      <TableCell>{formatINR(t.impact.costSavings)}</TableCell>
+                      <TableCell className="max-w-[260px] truncate" title={t.title}>
+                        {t.title}
+                        {t.slaChangeRequest?.status === 'Pending' && (
+                          <span className="ml-1 inline-flex items-center gap-0.5 rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-semibold">
+                            SLA change awaiting {t.slaChangeRequest.approverName}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${t.impact.complianceRisk === 'Yes' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
                           {t.impact.complianceRisk}
@@ -173,12 +248,22 @@ export default function PocTaskView() {
                         </Select>
                       </TableCell>
                       <TableCell>
+                        {t.status === 'In Progress' ? (
+                          <Select value={t.inProgressSubStage || ''} onValueChange={(v) => changeSubStage(t.id, v)}>
+                            <SelectTrigger data-testid={`poc-substage-${t.id}`} className="h-8 text-xs w-[180px]"><SelectValue placeholder="Pick sub-stage" /></SelectTrigger>
+                            <SelectContent>
+                              {SUBSTAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        ) : <span className="text-gray-300">—</span>}
+                      </TableCell>
+                      <TableCell>
                         <Button
                           data-testid={`poc-sla-edit-${t.id}`}
                           size="sm"
                           variant="outline"
                           className="h-7 text-[11px] px-2"
-                          onClick={() => setSlaDialog({ ticket: t, hours: String(t.sla?.resolutionHours || ''), comment: '' })}
+                          onClick={() => setSlaDialog({ ticket: t, hours: String(t.sla?.resolutionHours || ''), comment: '', approverId: '' })}
                         >
                           <Timer className="h-3 w-3 mr-1" /> {t.sla?.resolutionHours ?? '—'}h
                         </Button>
@@ -193,7 +278,26 @@ export default function PocTaskView() {
                           className="h-7 w-20 text-xs"
                         />
                       </TableCell>
-                      <TableCell>{t.sla?.daysOpen ?? '—'}</TableCell>
+                      <TableCell>
+                        {t.jiraKey ? (
+                          <a
+                            href={`https://jira.example/browse/${t.jiraKey}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="text-red-700 hover:text-red-900 font-mono-airtel inline-flex items-center"
+                          >
+                            {t.jiraKey} <ExternalLink className="h-3 w-3 ml-1" />
+                          </a>
+                        ) : (
+                          <Button
+                            size="sm" variant="outline"
+                            data-testid={`poc-jira-${t.id}`}
+                            className="h-7 text-[11px] px-2"
+                            onClick={() => setJiraDialog({ ticket: t, jiraKey: '' })}
+                          >
+                            Link
+                          </Button>
+                        )}
+                      </TableCell>
                       <TableCell><SlaChip sla={t.sla} /></TableCell>
                     </TableRow>
                   ))}
@@ -262,24 +366,35 @@ export default function PocTaskView() {
         </TabsContent>
       </Tabs>
 
-      {/* SLA edit dialog — comment mandatory */}
+      {/* SLA change request dialog — approver + comment mandatory */}
       <Dialog open={!!slaDialog} onOpenChange={(open) => !open && setSlaDialog(null)}>
         <DialogContent data-testid="poc-sla-dialog">
           <DialogHeader>
-            <DialogTitle>Update SLA — {slaDialog?.ticket?.id}</DialogTitle>
-            <DialogDescription>Change the resolution SLA (hours). A justification comment is mandatory and will be recorded in the audit trail.</DialogDescription>
+            <DialogTitle>Request SLA change — {slaDialog?.ticket?.id}</DialogTitle>
+            <DialogDescription>
+              Pick an approver, propose a new SLA (hours), and justify the change. Both your request and the
+              approver's decision will be written to the audit trail.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs font-semibold">Resolution SLA (hours)</Label>
+              <Label className="text-xs font-semibold">Proposed resolution SLA (hours) *</Label>
               <Input
                 data-testid="poc-sla-hours"
-                type="number"
-                min={1}
+                type="number" min={1}
                 value={slaDialog?.hours ?? ''}
                 onChange={(e) => setSlaDialog((p) => ({ ...p, hours: e.target.value }))}
                 className="mt-1"
               />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold">Approver *</Label>
+              <Select value={slaDialog?.approverId ?? ''} onValueChange={(v) => setSlaDialog((p) => ({ ...p, approverId: v }))}>
+                <SelectTrigger data-testid="poc-sla-approver" className="mt-1"><SelectValue placeholder="Pick a COE Admin or Leadership user" /></SelectTrigger>
+                <SelectContent>
+                  {approvers.map((a) => <SelectItem key={a.id} value={a.id}>{a.name} ({a.role})</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label className="text-xs font-semibold">Justification *</Label>
@@ -296,8 +411,32 @@ export default function PocTaskView() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setSlaDialog(null)}>Cancel</Button>
             <Button data-testid="poc-sla-submit" onClick={submitSlaChange} className="bg-red-600 hover:bg-red-700">
-              Save change
+              Send for approval
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* JIRA link dialog */}
+      <Dialog open={!!jiraDialog} onOpenChange={(o) => !o && setJiraDialog(null)}>
+        <DialogContent data-testid="poc-jira-dialog">
+          <DialogHeader>
+            <DialogTitle>Link {jiraDialog?.ticket?.id} to JIRA</DialogTitle>
+            <DialogDescription>Paste the JIRA issue key (e.g. <code>SCM-123</code>). JIRA project URL is configured by Admin in Admin Console → Workflows.</DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label className="text-xs font-semibold">JIRA key *</Label>
+            <Input
+              data-testid="poc-jira-key"
+              value={jiraDialog?.jiraKey ?? ''}
+              onChange={(e) => setJiraDialog((p) => ({ ...p, jiraKey: e.target.value.toUpperCase() }))}
+              placeholder="SCM-123"
+              className="mt-1"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setJiraDialog(null)}>Cancel</Button>
+            <Button data-testid="poc-jira-submit" onClick={submitJira} className="bg-red-600 hover:bg-red-700">Link</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

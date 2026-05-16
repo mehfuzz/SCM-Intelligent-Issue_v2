@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Button } from '../components/ui/button';
 import { MOCK_NOTIFICATIONS, relativeTime } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
+import { isLiveApi } from '../lib/hydrate';
 import { Bell, CheckCheck, AlertTriangle, MessageSquare, UserPlus, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,20 +28,44 @@ const COLORS = {
 
 export default function NotificationCenter() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [items, setItems] = useState(MOCK_NOTIFICATIONS);
   const [tab, setTab] = useState('all');
+  const [loading, setLoading] = useState(false);
+
+  // Lazy-load from backend when API is live and we know the user.
+  useEffect(() => {
+    if (!user?.id || !isLiveApi()) return;
+    let cancelled = false;
+    setLoading(true);
+    api.listNotifications(user.id)
+      .then((rows) => {
+        if (cancelled) return;
+        setItems((rows || []).map((r) => ({
+          id: r.id, type: r.type, title: r.title, message: r.message,
+          ticketId: r.ticket_id, at: r.at, read: !!r.read,
+        })));
+      })
+      .catch((err) => console.warn('[notifications] fetch failed', err))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   const filtered = tab === 'unread' ? items.filter((n) => !n.read) : items;
   const unreadCount = items.filter((n) => !n.read).length;
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
     setItems((p) => p.map((n) => ({ ...n, read: true })));
     toast.success('All marked as read');
+    if (isLiveApi()) {
+      await Promise.all(items.filter((n) => !n.read).map((n) => api.markNotification(n.id, true).catch(() => null)));
+    }
   };
 
   const open = (n) => {
     setItems((p) => p.map((x) => x.id === n.id ? { ...x, read: true } : x));
-    navigate(`/tickets/${n.ticketId}`);
+    if (isLiveApi() && !n.read) api.markNotification(n.id, true).catch(() => null);
+    if (n.ticketId) navigate(`/tickets/${n.ticketId}`);
   };
 
   return (

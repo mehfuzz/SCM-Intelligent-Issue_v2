@@ -1,6 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { MOCK_TICKETS, MOCK_COMMENTS, MOCK_AUDIT, ROLES, formatINR, formatDateTime, relativeTime } from '../data/mockData';
+import { useState, useEffect } from 'react';
+import {
+  MOCK_TICKETS, MOCK_COMMENTS, MOCK_AUDIT, ROLES,
+  formatINR, formatDateTime, relativeTime,
+} from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
+import { isLiveApi } from '../lib/hydrate';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -8,21 +14,70 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Separator } from '../components/ui/separator';
 import { PriorityBadge, StatusBadge, SlaChip } from '../components/shared/Badges';
-import { useState } from 'react';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, FileText, Link2, MessageSquare, History, Send, ShieldCheck, Sparkles
+  ArrowLeft, FileText, Link2, MessageSquare, History, Send, ShieldCheck,
+  Sparkles, Pencil, Check, X,
 } from 'lucide-react';
 
 export default function TicketDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const ticket = MOCK_TICKETS.find((t) => t.id === id);
-  const comments = MOCK_COMMENTS[id] || [];
-  const audit = MOCK_AUDIT[id] || [];
+
+  // Local mirror of the ticket so edits reflect immediately while persistence
+  // happens in the background.
+  const baseTicket = MOCK_TICKETS.find((t) => t.id === id);
+  const [ticket, setTicket] = useState(baseTicket);
+
+  // Live comments + audit — lazy-load from API; fall back to bundled mock.
+  const [comments, setComments] = useState(MOCK_COMMENTS[id] || []);
+  const [audit, setAudit]       = useState(MOCK_AUDIT[id] || []);
   const [newComment, setNewComment] = useState('');
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [draftDesc, setDraftDesc]   = useState(baseTicket?.description || '');
+
   const hidePriorityAndSla = user?.role === ROLES.SUBMITTER;
+  const canEditDescription = ticket && user && (
+    user.role === ROLES.COE_ADMIN ||
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.role === ROLES.SUBMITTER && ticket.submittedById === user.id)
+  );
+
+  // Lazy load API-backed comments + audit when the API is live.
+  useEffect(() => {
+    if (!ticket?.id) return;
+    if (!isLiveApi()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [c, a] = await Promise.all([
+          api.listComments(ticket.id),
+          api.listAudit({ ticketId: ticket.id }),
+        ]);
+        if (cancelled) return;
+        setComments((c || []).map((row) => ({
+          id: row.id,
+          author: row.author,
+          authorRole: row.author_role,
+          text: row.body,
+          at: row.at,
+        })));
+        setAudit((a || []).map((row) => ({
+          id: row.id,
+          at: row.at,
+          actor: row.actor_name,
+          action: row.action,
+          detail: row.field
+            ? `${row.field}: ${row.before_val ?? '—'} → ${row.after_val ?? '—'}${row.note ? ` · ${row.note}` : ''}`
+            : (row.note || ''),
+        })));
+      } catch (err) {
+        console.warn('[ticket] comment / audit fetch failed', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ticket?.id]);
 
   if (!ticket) {
     return (
@@ -33,10 +88,63 @@ export default function TicketDetails() {
     );
   }
 
-  const postComment = () => {
-    if (!newComment.trim()) return;
-    toast.success('Comment posted');
+  const postComment = async () => {
+    const body = newComment.trim();
+    if (!body) return;
+    const optimistic = {
+      id: `local-${Date.now()}`,
+      author: user?.name || 'You',
+      authorRole: user?.role || '',
+      text: body,
+      at: new Date().toISOString(),
+    };
+    setComments((prev) => [optimistic, ...prev]);
     setNewComment('');
+
+    if (!isLiveApi()) {
+      toast.warning('Comment saved locally — connect Supabase to persist.');
+      return;
+    }
+    try {
+      const saved = await api.postComment(ticket.id, body);
+      setComments((prev) => [
+        { id: saved.id, author: saved.author, authorRole: saved.author_role, text: saved.body, at: saved.at },
+        ...prev.filter((c) => c.id !== optimistic.id),
+      ]);
+      toast.success('Comment posted');
+    } catch (e) {
+      toast.error(`Failed to post: ${e?.message || 'API error'}`);
+    }
+  };
+
+  const saveDescription = async () => {
+    const next = draftDesc.trim();
+    if (!next) { toast.error('Description cannot be empty'); return; }
+    if (next === ticket.description) { setEditingDesc(false); return; }
+    const before = ticket.description;
+    setTicket((t) => ({ ...t, description: next }));
+    setEditingDesc(false);
+
+    // Optimistic audit entry.
+    const auditEntry = {
+      id: `local-${Date.now()}`,
+      at: new Date().toISOString(),
+      actor: user?.name || 'You',
+      action: 'Description edited',
+      detail: `${before?.length || 0} → ${next.length} chars`,
+    };
+    setAudit((prev) => [auditEntry, ...prev]);
+
+    if (!isLiveApi()) {
+      toast.warning('Description updated locally — not persisted (demo mode).');
+      return;
+    }
+    try {
+      await api.patchTicket(ticket.id, { description: next });
+      toast.success('Description updated');
+    } catch (e) {
+      toast.error(`Save failed: ${e?.message || 'API error'}`);
+    }
   };
 
   return (
@@ -71,9 +179,40 @@ export default function TicketDetails() {
         {/* Main */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="border-b border-gray-100"><CardTitle className="font-display text-lg">Description</CardTitle></CardHeader>
+            <CardHeader className="border-b border-gray-100 flex flex-row items-center justify-between">
+              <CardTitle className="font-display text-lg">Description</CardTitle>
+              {canEditDescription && !editingDesc && (
+                <Button
+                  size="sm" variant="ghost"
+                  data-testid="edit-description-btn"
+                  onClick={() => { setDraftDesc(ticket.description || ''); setEditingDesc(true); }}
+                >
+                  <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                </Button>
+              )}
+            </CardHeader>
             <CardContent className="p-5">
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{ticket.description}</p>
+              {editingDesc ? (
+                <div className="space-y-2">
+                  <Textarea
+                    data-testid="description-edit-input"
+                    rows={6}
+                    value={draftDesc}
+                    onChange={(e) => setDraftDesc(e.target.value)}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setEditingDesc(false)}>
+                      <X className="h-3.5 w-3.5 mr-1" /> Cancel
+                    </Button>
+                    <Button size="sm" data-testid="description-save-btn" onClick={saveDescription} className="bg-red-600 hover:bg-red-700">
+                      <Check className="h-3.5 w-3.5 mr-1" /> Save
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-gray-500">Every edit is recorded in the audit trail.</p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{ticket.description}</p>
+              )}
               {ticket.suggestedSolution && (
                 <>
                   <Separator className="my-4" />
@@ -99,7 +238,7 @@ export default function TicketDetails() {
 
             <TabsContent value="comments" className="space-y-4 mt-4">
               {comments.length === 0 && (
-                <p className="text-sm text-gray-500 py-4 text-center">No comments yet.</p>
+                <p className="text-sm text-gray-500 py-4 text-center">No comments yet — be the first.</p>
               )}
               {comments.map((c) => (
                 <Card key={c.id} className="border-gray-200">
@@ -112,10 +251,10 @@ export default function TicketDetails() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 text-sm">
                         <span className="font-semibold text-gray-900">{c.author}</span>
-                        <span className="text-[11px] rounded-full bg-gray-100 text-gray-600 px-2 py-0.5">{c.authorRole}</span>
+                        {c.authorRole && <span className="text-[11px] rounded-full bg-gray-100 text-gray-600 px-2 py-0.5">{c.authorRole}</span>}
                         <span className="text-xs text-gray-400 ml-auto">{relativeTime(c.at)}</span>
                       </div>
-                      <p className="mt-2 text-sm text-gray-700">{c.text}</p>
+                      <p className="mt-2 text-sm text-gray-700 whitespace-pre-line">{c.text}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -152,7 +291,7 @@ export default function TicketDetails() {
                         <span className="absolute -left-[7px] mt-1 h-3 w-3 rounded-full bg-red-600 ring-4 ring-red-100" />
                         <div className="text-xs text-gray-500">{formatDateTime(a.at)}</div>
                         <div className="text-sm font-semibold text-gray-900 mt-0.5">{a.action}</div>
-                        <div className="text-xs text-gray-600">by {a.actor} · {a.detail}</div>
+                        <div className="text-xs text-gray-600">by {a.actor}{a.detail ? ` · ${a.detail}` : ''}</div>
                       </li>
                     ))}
                     {audit.length === 0 && (
@@ -165,24 +304,25 @@ export default function TicketDetails() {
 
             <TabsContent value="brd" className="mt-4">
               <Card className="border-gray-200">
-                <CardContent className="p-5">
-                  {ticket.brdId ? (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900">{ticket.brdId} · {ticket.brdStatus}</div>
-                        <div className="text-xs text-gray-500 mt-0.5">Auto-drafted BRD for this ticket.</div>
-                      </div>
-                      <Button
-                        data-testid="open-brd-btn"
-                        onClick={() => navigate(`/brd/${ticket.brdId}`)}
-                        variant="outline"
-                      >
-                        <FileText className="h-3.5 w-3.5 mr-1.5" /> Open BRD
-                      </Button>
+                <CardContent className="p-5 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {ticket.brdId ? `${ticket.brdId} · ${ticket.brdStatus || 'Draft'}` : 'No BRD yet'}
                     </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">No BRD generated yet for this ticket.</div>
-                  )}
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {ticket.brdId
+                        ? 'BRD lives in the BRD Editor — POC and submitter can co-author with full audit trail.'
+                        : 'Open the BRD Editor to start an auto-draft or upload your own.'}
+                    </div>
+                  </div>
+                  <Button
+                    data-testid="open-brd-btn"
+                    onClick={() => navigate(ticket.brdId ? `/brd/${ticket.brdId}` : `/brd?ticket=${ticket.id}`)}
+                    variant="outline"
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-1.5" />
+                    {ticket.brdId ? 'Open BRD' : 'Start BRD'}
+                  </Button>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -235,7 +375,7 @@ export default function TicketDetails() {
               <CardHeader className="border-b border-gray-100"><CardTitle className="font-display text-base flex items-center gap-2"><Link2 className="h-4 w-4" /> Linked tickets</CardTitle></CardHeader>
               <CardContent className="p-4 text-sm space-y-2">
                 {ticket.parentId && <Linked id={ticket.parentId} label="Parent" />}
-                {ticket.childrenIds.map((c) => <Linked key={c} id={c} label="Child" />)}
+                {(ticket.childrenIds || []).map((c) => <Linked key={c} id={c} label="Child" />)}
                 {ticket.relatedTicketId && <Linked id={ticket.relatedTicketId} label="Related" />}
               </CardContent>
             </Card>

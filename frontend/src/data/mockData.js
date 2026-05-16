@@ -34,18 +34,33 @@ export const FUNCTIONS = [
   'Material Management', 'ToCo', 'B2B', 'Real Estate', 'Bharti Foundation', 'Content',
 ];
 
-// From Excel "Issue Taxonomy" sheet
+// From user request — replaces the framework's 5-category taxonomy.
 export const CATEGORIES = [
-  'Process Issues',
-  'Data & Reporting',
+  'Process Gap',
+  'Technical Bug',
+  'Visibility Gap',
+  'Automation Opportunity',
+  'New Development',
   'Compliance & Risk',
-  'System & Tool Issues',
-  'People & Knowledge',
+  'Data Quality',
+  'Dashboard & Reporting',
 ];
 
 export const FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Ad-hoc'];
 export const STATUSES   = ['Submitted', 'Triaged', 'POC Assigned', 'In Progress', 'Pending Validation', 'Closed', 'Reopened'];
 export const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
+
+// Sub-stages a POC owner can pick once a ticket reaches "In Progress".
+// System Admin can edit this list at runtime via Admin Console.
+export const IN_PROGRESS_SUBSTAGES_DEFAULT = [
+  'Requirements gathering',
+  'Design',
+  'Development',
+  'Code review',
+  'QA / Testing',
+  'UAT',
+  'Awaiting deployment',
+];
 
 // -----------------------------------------------------------------------------
 // Priority calculation (mirrors Framework "Prioritisation Parameters" sheet)

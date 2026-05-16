@@ -36,8 +36,24 @@ export default function LeadershipDashboard() {
   const slaCompliance = total ? Math.round(((total - breached) / total) * 100) : 100;
   const savings = tickets.reduce((s, t) => s + (Number(t.impact.costSavings) || 0), 0);
   const compliance = tickets.filter((t) => t.impact.complianceRisk === 'Yes').length;
+  const reopened = tickets.filter((t) => t.status === 'Reopened').length;
+
+  // A ticket is "stalled" if it's been open for more than its resolution SLA
+  // and the SLA state is breached. (Conservative — does not flag at-risk.)
+  const stalled = tickets.filter(
+    (t) => t.status !== 'Closed' && t.sla?.state === 'breached'
+  ).length;
+
+  // Average time-to-close (days). Uses sla.daysOpen on closed tickets — that
+  // mirrors the framework "Days Open" field.
+  const closedTickets = tickets.filter((t) => t.status === 'Closed');
+  const avgCloseDays = closedTickets.length
+    ? Math.round(closedTickets.reduce((s, t) => s + (t.sla?.daysOpen || 0), 0) / closedTickets.length)
+    : 0;
 
   // -------- chart datasets --------
+  // Always include every module — empty modules show as 0 so leadership can
+  // see the full coverage map, not just the ones with traffic.
   const byCategory = CATEGORIES.map((c) => ({ name: c, value: tickets.filter((t) => t.category === c).length }));
   const byModule   = MODULES.map((m) => ({ name: m, value: tickets.filter((t) => t.module === m).length }));
   const byPriority = ['P0', 'P1', 'P2', 'P3'].map((p) => ({
@@ -45,6 +61,27 @@ export default function LeadershipDashboard() {
     open:   tickets.filter((t) => t.priority === p && t.status !== 'Closed').length,
     closed: tickets.filter((t) => t.priority === p && t.status === 'Closed').length,
   }));
+
+  // Per-module average days-to-close (only computed where there's at least one closed ticket).
+  const avgCloseByModule = MODULES.map((m) => {
+    const owns = tickets.filter((t) => t.module === m && t.status === 'Closed');
+    return {
+      name: m,
+      value: owns.length ? Math.round(owns.reduce((s, t) => s + (t.sla?.daysOpen || 0), 0) / owns.length) : 0,
+    };
+  });
+
+  // Reopens by module — historical signal for "fix didn't stick".
+  const reopensByModule = MODULES.map((m) => ({
+    name: m,
+    value: tickets.filter((t) => t.module === m && t.status === 'Reopened').length,
+  }));
+
+  // Top 5 pending issues by composite score (highest impact, still open).
+  const topPending = [...tickets]
+    .filter((t) => t.status !== 'Closed')
+    .sort((a, b) => (b.composite || 0) - (a.composite || 0))
+    .slice(0, 5);
 
   // Per-POC report
   const pocs = MOCK_USERS.filter((u) => u.role === ROLES.POC_OWNER);
@@ -105,7 +142,7 @@ export default function LeadershipDashboard() {
 
         {/* OVERVIEW */}
         <TabsContent value="overview" className="mt-4 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <DrillKpi testId="kpi-total"      label="Total tickets"        value={total}                 icon={Inbox}      accent
                       onDoubleClick={() => openDrill('All tickets', () => true)} />
             <DrillKpi testId="kpi-resolved"   label="Resolved"             value={closed}                icon={TrendingUp}
@@ -116,9 +153,54 @@ export default function LeadershipDashboard() {
                       onDoubleClick={() => openDrill('SLA breached / at risk', (t) => ['breached', 'at-risk'].includes(t.sla?.state))} />
             <DrillKpi testId="kpi-savings"    label="Identified savings"   value={formatINR(savings)}    icon={IndianRupee} delta="YTD"
                       onDoubleClick={() => openDrill('All tickets (by savings)', () => true)} />
-            <DrillKpi testId="kpi-compliance" label="Compliance flagged"   value={compliance}            icon={AlertTriangle}
-                      onDoubleClick={() => openDrill('Compliance risks', (t) => t.impact.complianceRisk === 'Yes')} />
+            <DrillKpi testId="kpi-stalled"    label="Stalled (SLA breached)" value={stalled}             icon={AlertTriangle}
+                      delta={stalled > 0 ? 'needs escalation' : 'none'}
+                      deltaType={stalled > 0 ? 'down' : 'up'}
+                      onDoubleClick={() => openDrill('Stalled tickets', (t) => t.status !== 'Closed' && t.sla?.state === 'breached')} />
+            <DrillKpi testId="kpi-avg-close"  label="Avg time to close" value={`${avgCloseDays}d`} icon={TrendingUp}
+                      onDoubleClick={() => openDrill('Closed tickets sorted by Days Open', (t) => t.status === 'Closed')} />
           </div>
+
+          {/* Top 5 pending issues — at-a-glance triage for leadership */}
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="border-b border-gray-100 flex flex-row items-center justify-between">
+              <CardTitle className="font-display text-lg">Top 5 pending issues</CardTitle>
+              <span className="text-xs text-gray-500">Highest composite score, status ≠ Closed</span>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50 hover:bg-gray-50">
+                    <TableHead className="w-[60px]">Rank</TableHead>
+                    <TableHead className="w-[140px]">Ticket</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead className="w-[110px]">Module</TableHead>
+                    <TableHead className="w-[100px]">Score</TableHead>
+                    <TableHead className="w-[100px]">Priority</TableHead>
+                    <TableHead className="w-[130px]">Status</TableHead>
+                    <TableHead className="w-[110px]">SLA</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {topPending.map((t, i) => (
+                    <TableRow key={t.id} data-testid={`top-pending-${t.id}`} className="hover:bg-gray-50">
+                      <TableCell className="font-bold text-red-600">#{i + 1}</TableCell>
+                      <TableCell className="font-mono-airtel text-xs">{t.id}</TableCell>
+                      <TableCell className="text-sm truncate max-w-md">{t.title}</TableCell>
+                      <TableCell className="text-xs">{t.module}</TableCell>
+                      <TableCell className="font-semibold">{t.composite}</TableCell>
+                      <TableCell><PriorityBadge priority={t.priority} /></TableCell>
+                      <TableCell><StatusBadge status={t.status} /></TableCell>
+                      <TableCell><SlaChip sla={t.sla} /></TableCell>
+                    </TableRow>
+                  ))}
+                  {topPending.length === 0 && (
+                    <TableRow><TableCell colSpan={8} className="text-center text-xs text-gray-500 py-6">No pending issues — well done.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="border-gray-200 shadow-sm">
@@ -188,17 +270,54 @@ export default function LeadershipDashboard() {
               </CardContent>
             </Card>
 
-            <Card className="border-gray-200 shadow-sm">
-              <CardHeader className="border-b border-gray-100"><CardTitle className="font-display text-lg">Volume by module — double-click a bar</CardTitle></CardHeader>
+            <Card className="border-gray-200 shadow-sm lg:col-span-2">
+              <CardHeader className="border-b border-gray-100"><CardTitle className="font-display text-lg">Volume by module — every SCM module shown; double-click a bar</CardTitle></CardHeader>
               <CardContent className="p-5">
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={byModule} margin={{ top: 10, right: 10, left: -10, bottom: 0 }} layout="vertical"
+                <ResponsiveContainer width="100%" height={Math.max(260, byModule.length * 26)}>
+                  <BarChart data={byModule} margin={{ top: 10, right: 20, left: 0, bottom: 0 }} layout="vertical"
                     onDoubleClick={(e) => e?.activeLabel && openDrill(`Module: ${e.activeLabel}`, (t) => t.module === e.activeLabel)}>
                     <CartesianGrid stroke="#F3F4F6" horizontal={false} />
                     <XAxis type="number" tick={{ fontSize: 11, fill: '#6B7280' }} allowDecimals={false} />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: '#6B7280' }} width={120} />
+                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: '#374151' }} width={150} interval={0} />
                     <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #E5E7EB' }} />
                     <Bar dataKey="value" fill="#E40000" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardHeader className="border-b border-gray-100">
+                <CardTitle className="font-display text-lg">Avg time to close (days) by module</CardTitle>
+              </CardHeader>
+              <CardContent className="p-5">
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={avgCloseByModule} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                    onDoubleClick={(e) => e?.activeLabel && openDrill(`Closed in module: ${e.activeLabel}`, (t) => t.module === e.activeLabel && t.status === 'Closed')}>
+                    <CartesianGrid stroke="#F3F4F6" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6B7280' }} interval={0} angle={-25} textAnchor="end" height={80} />
+                    <YAxis tick={{ fontSize: 11, fill: '#6B7280' }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #E5E7EB' }} />
+                    <Bar dataKey="value" fill="#10B981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardHeader className="border-b border-gray-100 flex flex-row items-center justify-between">
+                <CardTitle className="font-display text-lg">Reopened tickets by module</CardTitle>
+                <span className="text-xs text-gray-500">Total reopens: <strong>{reopened}</strong></span>
+              </CardHeader>
+              <CardContent className="p-5">
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={reopensByModule} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                    onDoubleClick={(e) => e?.activeLabel && openDrill(`Reopened in module: ${e.activeLabel}`, (t) => t.module === e.activeLabel && t.status === 'Reopened')}>
+                    <CartesianGrid stroke="#F3F4F6" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6B7280' }} interval={0} angle={-25} textAnchor="end" height={80} />
+                    <YAxis tick={{ fontSize: 11, fill: '#6B7280' }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #E5E7EB' }} />
+                    <Bar dataKey="value" fill="#F59E0B" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -208,7 +327,7 @@ export default function LeadershipDashboard() {
           <Card className="border-amber-200 bg-amber-50/40 shadow-sm">
             <CardContent className="p-4 text-xs text-amber-900 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
-              {atRisk} ticket(s) at risk · {breached} breached · {compliance} compliance-flagged.
+              {atRisk} ticket(s) at risk · {breached} breached · {stalled} stalled · {compliance} compliance-flagged · {reopened} reopened.
               Double-click any KPI tile or chart bar to drill into the underlying tickets.
             </CardContent>
           </Card>

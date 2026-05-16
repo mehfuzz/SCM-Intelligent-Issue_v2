@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   MOCK_TICKETS, MODULES, CATEGORIES, STATUSES, ROLES,
@@ -17,10 +17,26 @@ import { Search, Download, Filter, ChevronRight } from 'lucide-react';
 export default function Reports() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [q, setQ] = useState('');
   const [modFilter, setModFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [slaFilter, setSlaFilter] = useState('all');
+
+  // Initialise filters from the URL — used by drill-down clicks from the Home
+  // dashboard KPI cards (?status=Closed, ?status=open, ?sla=breached, …).
+  useEffect(() => {
+    const st = searchParams.get('status');
+    if (st) {
+      if (st === 'open') setStatusFilter('open');
+      else setStatusFilter(st);
+    }
+    const sla = searchParams.get('sla');
+    if (sla) setSlaFilter(sla);
+    const mod = searchParams.get('module');
+    if (mod) setModFilter(mod);
+  }, [searchParams]);
 
   const isSubmitter = user?.role === ROLES.SUBMITTER;
   const isPocOwner  = user?.role === ROLES.POC_OWNER;
@@ -36,8 +52,13 @@ export default function Reports() {
     (q ? (t.title.toLowerCase().includes(q.toLowerCase()) || t.id.toLowerCase().includes(q.toLowerCase())) : true) &&
     (modFilter === 'all' ? true : t.module === modFilter) &&
     (catFilter === 'all' ? true : t.category === catFilter) &&
-    (statusFilter === 'all' ? true : t.status === statusFilter)
-  ), [scoped, q, modFilter, catFilter, statusFilter]);
+    (statusFilter === 'all'
+      ? true
+      : statusFilter === 'open'
+        ? t.status !== 'Closed'
+        : t.status === statusFilter) &&
+    (slaFilter === 'all' ? true : t.sla?.state === slaFilter)
+  ), [scoped, q, modFilter, catFilter, statusFilter, slaFilter]);
 
   const exportCSV = () => {
     const csv = ticketsToCSV(rows);

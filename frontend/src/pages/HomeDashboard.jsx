@@ -91,11 +91,49 @@ export default function HomeDashboard() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard testId="kpi-open" label={isSubmitter ? 'My open tickets' : 'Open tickets'} value={open.length} icon={Inbox} accent />
-        {!isSubmitter && <KpiCard testId="kpi-breached" label="SLA breached" value={breached.length} icon={AlertTriangle} delta={breached.length > 0 ? `${breached.length} need action` : 'all clear'} deltaType={breached.length > 0 ? 'down' : 'up'} />}
-        <KpiCard testId="kpi-closed" label={isSubmitter ? 'My closed' : 'Closed this month'} value={closed.length} icon={CheckCircle2} delta={isSubmitter ? '' : '+2 vs last mo'} deltaType="up" />
-        <KpiCard testId="kpi-savings" label={isSubmitter ? 'My estimated savings' : 'Realized savings'} value={formatINR(savings)} icon={Timer} />
-        {isSubmitter && <KpiCard testId="kpi-validation" label="Pending validation" value={filteredTickets.filter((t) => t.status === 'Pending Validation').length} icon={CheckCircle2} />}
+        <KpiCard
+          testId="kpi-open"
+          label={isSubmitter ? 'My open tickets' : 'Open tickets'}
+          value={open.length}
+          icon={Inbox}
+          accent
+          onClick={() => navigate('/reports?status=open')}
+        />
+        {!isSubmitter && (
+          <KpiCard
+            testId="kpi-breached"
+            label="SLA breached"
+            value={breached.length}
+            icon={AlertTriangle}
+            delta={breached.length > 0 ? `${breached.length} need action` : 'all clear'}
+            deltaType={breached.length > 0 ? 'down' : 'up'}
+            onClick={() => navigate('/reports?sla=breached')}
+          />
+        )}
+        <KpiCard
+          testId="kpi-closed"
+          label={isSubmitter ? 'My closed' : 'Closed this month'}
+          value={closed.length}
+          icon={CheckCircle2}
+          delta={isSubmitter ? '' : '+2 vs last mo'}
+          deltaType="up"
+          onClick={() => navigate('/reports?status=Closed')}
+        />
+        <KpiCard
+          testId="kpi-savings"
+          label={isSubmitter ? 'My estimated savings' : 'Realized savings'}
+          value={formatINR(savings)}
+          icon={Timer}
+        />
+        {isSubmitter && (
+          <KpiCard
+            testId="kpi-validation"
+            label="Pending validation"
+            value={filteredTickets.filter((t) => t.status === 'Pending Validation').length}
+            icon={CheckCircle2}
+            onClick={() => navigate('/reports?status=Pending%20Validation')}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

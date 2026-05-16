@@ -39,14 +39,15 @@ export default function IssueSubmission() {
     function: '',
     category: '',
     description: '',
-    frequency: 'Weekly',
+    frequency: '',
     peopleAffected: '',
     hoursLost: '',
     costSavings: '',
-    complianceRisk: 'No',
+    complianceRisk: '',
     suggestedSolution: '',
     relatedTicketId: '',
-    hasWorkaround: false,
+    hasWorkaround: 'No',
+    workaroundText: '',
     attachments: [],
   });
 
@@ -61,10 +62,22 @@ export default function IssueSubmission() {
 
   const goNext = () => {
     if (step === 1) {
-      if (!form.title || !form.module || !form.category) {
-        toast.error('Please fill all required fields'); return;
-      }
+      if (!form.title.trim()) { toast.error('Title is required'); return; }
+      if (!form.module)       { toast.error('Module is required'); return; }
+      if (!form.category)     { toast.error('Category is required'); return; }
       if (similarTickets.length > 0) { setShowSimilar(true); return; }
+    }
+    if (step === 2) {
+      if (!form.frequency)                                              { toast.error('Frequency is required'); return; }
+      if (!form.peopleAffected || Number(form.peopleAffected) < 1)      { toast.error('People Affected is required (>= 1)'); return; }
+      if (!form.hoursLost      || Number(form.hoursLost) <= 0)          { toast.error('Hours lost is required (> 0)'); return; }
+      if (!form.costSavings    || Number(form.costSavings) <= 0)        { toast.error('Cost saving potential is required (> 0)'); return; }
+      if (!form.complianceRisk)                                         { toast.error('Compliance Risk Yes/No is required'); return; }
+    }
+    if (step === 3) {
+      if (form.hasWorkaround === 'Yes' && !form.workaroundText.trim()) {
+        toast.error('Please describe the existing workaround.'); return;
+      }
     }
     setStep((s) => Math.min(s + 1, 4));
   };
@@ -90,6 +103,7 @@ export default function IssueSubmission() {
       },
       suggestedSolution: form.suggestedSolution,
       relatedTicketId:   form.relatedTicketId,
+      notes: form.hasWorkaround === 'Yes' ? `Existing workaround: ${form.workaroundText}` : '',
     };
 
     const localFallback = () => {
@@ -233,19 +247,19 @@ export default function IssueSubmission() {
             <div className="space-y-4 animate-fade-in-up">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs font-semibold">Frequency</Label>
+                  <Label className="text-xs font-semibold">Frequency *</Label>
                   <Select value={form.frequency} onValueChange={(v) => set('frequency', v)}>
-                    <SelectTrigger data-testid="form-frequency-select" className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectTrigger data-testid="form-frequency-select" className="mt-1"><SelectValue placeholder="Select frequency" /></SelectTrigger>
                     <SelectContent>
                       {FREQUENCIES.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold">People affected</Label>
+                  <Label className="text-xs font-semibold">People affected *</Label>
                   <Input
                     data-testid="form-people-affected-input"
-                    type="number"
+                    type="number" min={1}
                     value={form.peopleAffected}
                     onChange={(e) => set('peopleAffected', e.target.value)}
                     placeholder="e.g. 50"
@@ -255,10 +269,10 @@ export default function IssueSubmission() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs font-semibold">Hours lost per week</Label>
+                  <Label className="text-xs font-semibold">Hours lost per week *</Label>
                   <Input
                     data-testid="form-hours-lost-input"
-                    type="number"
+                    type="number" min={0.5} step={0.5}
                     value={form.hoursLost}
                     onChange={(e) => set('hoursLost', e.target.value)}
                     placeholder="e.g. 12"
@@ -266,15 +280,18 @@ export default function IssueSubmission() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold">Est. cost saving potential (₹)</Label>
+                  <Label className="text-xs font-semibold">Est. annual cost saving potential (₹) *</Label>
                   <Input
                     data-testid="form-cost-savings-input"
-                    type="number"
+                    type="number" min={1}
                     value={form.costSavings}
                     onChange={(e) => set('costSavings', e.target.value)}
                     placeholder="e.g. 500000"
                     className="mt-1"
                   />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Enter the <strong>total annual ₹ saving</strong> if this issue is resolved (people-hours × ₹/hr + reworked-units × ₹/unit, etc.). Used directly in the priority composite — no implicit multiplier.
+                  </p>
                 </div>
               </div>
               <div>
@@ -294,13 +311,16 @@ export default function IssueSubmission() {
                   ))}
                 </div>
               </div>
-              {form.costSavings && (
+              {form.peopleAffected && form.hoursLost && (
                 <Card className="border-red-200 bg-red-50/50">
                   <CardContent className="p-4 flex items-center gap-3">
                     <Sparkles className="h-5 w-5 text-red-600" />
                     <div className="text-xs">
-                      <div className="font-semibold text-gray-900">AI-projected annual savings</div>
-                      <div className="text-gray-600 mt-0.5">~{formatINR(Number(form.costSavings) * 12)} based on inputs</div>
+                      <div className="font-semibold text-gray-900">Estimated org-wide hours lost / week</div>
+                      <div className="text-gray-600 mt-0.5">
+                        {Number(form.peopleAffected)} ppl × {Number(form.hoursLost)} hrs = <strong>{(Number(form.peopleAffected) * Number(form.hoursLost)).toFixed(1)} hrs / week</strong>
+                        {form.costSavings ? <> · annualised saving ≈ {formatINR(Number(form.costSavings))}</> : null}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -322,28 +342,44 @@ export default function IssueSubmission() {
                   className="mt-1"
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-xs font-semibold">Related ticket ID</Label>
-                  <Input
-                    data-testid="form-related-ticket-input"
-                    value={form.relatedTicketId}
-                    onChange={(e) => set('relatedTicketId', e.target.value)}
-                    placeholder="SCM-2025-…"
-                    className="mt-1"
-                  />
+              <div>
+                <Label className="text-xs font-semibold">Related ticket ID</Label>
+                <Input
+                  data-testid="form-related-ticket-input"
+                  value={form.relatedTicketId}
+                  onChange={(e) => set('relatedTicketId', e.target.value)}
+                  placeholder="SCM-MOD-NNN"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold">Existing workaround? *</Label>
+                <div className="mt-2 flex gap-2">
+                  {['No', 'Yes'].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      data-testid={`form-workaround-${c.toLowerCase()}`}
+                      onClick={() => set('hasWorkaround', c)}
+                      className={`px-4 py-1.5 text-xs rounded-full font-semibold border ${form.hasWorkaround === c ? (c === 'Yes' ? 'bg-red-600 text-white border-red-600' : 'bg-gray-900 text-white border-gray-900') : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'}`}
+                    >
+                      {c}
+                    </button>
+                  ))}
                 </div>
-                <div className="flex items-center justify-between rounded-md border border-gray-200 p-3">
-                  <div>
-                    <div className="text-sm font-semibold">Existing workaround?</div>
-                    <div className="text-[11px] text-gray-500">Toggle if there is a manual workaround in place</div>
+                {form.hasWorkaround === 'Yes' && (
+                  <div className="mt-3">
+                    <Label className="text-xs font-semibold">Describe the workaround *</Label>
+                    <Textarea
+                      data-testid="form-workaround-text"
+                      value={form.workaroundText}
+                      onChange={(e) => set('workaroundText', e.target.value)}
+                      rows={3}
+                      placeholder="What manual / temporary process is in place today to work around this issue?"
+                      className="mt-1"
+                    />
                   </div>
-                  <Switch
-                    data-testid="form-workaround-switch"
-                    checked={form.hasWorkaround}
-                    onCheckedChange={(v) => set('hasWorkaround', v)}
-                  />
-                </div>
+                )}
               </div>
               <div>
                 <Label className="text-xs font-semibold">Attachments</Label>
@@ -369,7 +405,7 @@ export default function IssueSubmission() {
                   ['Hours lost / wk', form.hoursLost || '—'],
                   ['Cost saving potential', form.costSavings ? formatINR(Number(form.costSavings)) : '—'],
                   ['Compliance risk', form.complianceRisk],
-                  ['Workaround', form.hasWorkaround ? 'Yes' : 'No'],
+                  ['Workaround', form.hasWorkaround === 'Yes' ? `Yes — ${form.workaroundText}` : 'No'],
                   ['Related ticket', form.relatedTicketId || '—'],
                 ].map(([k, v]) => (
                   <div key={k} className="grid grid-cols-3 gap-2 px-4 py-2 text-sm">
