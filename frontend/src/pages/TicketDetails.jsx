@@ -229,7 +229,41 @@ export default function TicketDetails() {
                 <>
                   <Separator className="my-4" />
                   <div className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">Suggested Solution</div>
-                  <p className="text-sm text-gray-700">{ticket.suggestedSolution}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-line">{ticket.suggestedSolution}</p>
+                </>
+              )}
+              {/* Existing workaround — submitters store it in `notes` as
+                   "Existing workaround: <text>" via the capture form. Surfaced
+                   here so POC owners can see whatever stopgap is currently in
+                   place before they start designing the fix. */}
+              {(() => {
+                const m = /^Existing workaround:\s*([\s\S]+)/i.exec(ticket.notes || '');
+                if (!m) return null;
+                return (
+                  <>
+                    <Separator className="my-4" />
+                    <div className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">Existing workaround</div>
+                    <p className="text-sm text-gray-700 whitespace-pre-line" data-testid="ticket-workaround-text">{m[1].trim()}</p>
+                  </>
+                );
+              })()}
+              {ticket.supportingEvidence && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">Supporting evidence</div>
+                  {/^https?:\/\//i.test(ticket.supportingEvidence) ? (
+                    <a
+                      href={ticket.supportingEvidence}
+                      target="_blank" rel="noopener noreferrer"
+                      data-testid="ticket-supporting-evidence-link"
+                      className="inline-flex items-center text-sm text-red-700 hover:text-red-900 break-all"
+                    >
+                      <Link2 className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                      {ticket.supportingEvidence}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-gray-700">{ticket.supportingEvidence}</p>
+                  )}
                 </>
               )}
             </CardContent>
@@ -356,6 +390,15 @@ export default function TicketDetails() {
                 ['Assigned to', ticket.assignedTo || 'Unassigned'],
                 ['Frequency', ticket.impact.frequency],
                 ['Compliance risk', ticket.impact.complianceRisk],
+                ['Workaround?', /^Existing workaround:/i.test(ticket.notes || '') ? 'Yes' : 'No'],
+                [
+                  'Supporting evidence',
+                  ticket.supportingEvidence
+                    ? (/^https?:\/\//i.test(ticket.supportingEvidence)
+                        ? <a href={ticket.supportingEvidence} target="_blank" rel="noopener noreferrer" className="text-red-700 hover:text-red-900 underline break-all">link</a>
+                        : 'attached')
+                    : '—',
+                ],
               ].map(([k, v]) => (
                 <div key={k} className="grid grid-cols-2 gap-2 py-1.5 border-b border-gray-50 last:border-0">
                   <span className="text-gray-500 text-xs">{k}</span>
