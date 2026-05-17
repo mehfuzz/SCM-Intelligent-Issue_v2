@@ -91,6 +91,18 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ ticket_id: ticketId, label, url }),
   }),
+
+  // ──────────────────────────────────────────────────────────────────────
+  // AI
+  // ──────────────────────────────────────────────────────────────────────
+  // POST /api/ai/generate-brd
+  // Body { ticketId, ticket? } → { sections, meta:{provider,model,fallbackUsed,at,actor} }
+  // ticket is passed inline in demo mode so the endpoint can draft without
+  // needing Supabase access.
+  generateBrd: (ticketId, ticket) => request('/ai/generate-brd', {
+    method: 'POST',
+    body: JSON.stringify({ ticketId, ticket }),
+  }),
 };
 
 // Best-effort check used by the boot-time data hydrator. Returns the full

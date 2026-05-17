@@ -1,6 +1,7 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
 import { notify } from '../lib/notify';
 import { MOCK_BRDS, MOCK_TICKETS, ROLES, formatDateTime, relativeTime } from '../data/mockData';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -13,6 +14,7 @@ import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Check, FileText, History, X, Upload, MessageSquare, Send, Sparkles, Save,
+  Wand2, Loader2,
 } from 'lucide-react';
 
 // Build a fresh BRD draft from a ticket — used when a Submitter clicks
@@ -67,6 +69,10 @@ export default function BrdEditor() {
   const [newComment, setNewComment] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [editRequest, setEditRequest] = useState('');
+  // AI generation state.
+  const [generating, setGenerating] = useState(false);
+  const [aiMeta, setAiMeta] = useState(null); // { provider, model, fallbackUsed, at }
+  const [aiError, setAiError] = useState(null);
 
   const canEdit = user && (
     user.role === ROLES.POC_OWNER ||
@@ -88,6 +94,55 @@ export default function BrdEditor() {
 
   const updateSection = (key, val) => {
     setBrd((p) => ({ ...p, sections: { ...p.sections, [key]: val } }));
+  };
+
+  // ──────────────────────────────────────────────────────────────────────
+  // AI: Generate full draft (Groq → Gemini fallback).
+  // The endpoint loads the ticket server-side so we send minimal payload —
+  // unless we're in demo mode (Supabase not configured), in which case we
+  // ship the ticket inline.
+  // ──────────────────────────────────────────────────────────────────────
+  const onGenerateDraft = async () => {
+    if (!brd?.ticketId) {
+      toast.error('No ticket linked to this BRD');
+      return;
+    }
+    setGenerating(true);
+    setAiError(null);
+    try {
+      const linked = MOCK_TICKETS.find((t) => t.id === brd.ticketId) || null;
+      const res = await api.generateBrd(brd.ticketId, linked);
+      // Populate every section the model returned. If the model skipped a
+      // key, leave the existing draft value in place rather than blanking
+      // it — gives the POC something to keep editing.
+      setBrd((p) => ({
+        ...p,
+        sections: { ...p.sections, ...res.sections },
+        status: 'Draft (AI-generated)',
+        versions: [
+          { v: bumpVersion(p.version), at: res.meta?.at || new Date().toISOString(),
+            by: `AI · ${res.meta?.provider}:${res.meta?.model}${res.meta?.fallbackUsed ? ' (fallback)' : ''}` },
+          ...(p.versions || []),
+        ],
+        version: bumpVersion(p.version),
+      }));
+      setAiMeta(res.meta || null);
+      logAudit(
+        'AI draft generated',
+        `${res.meta?.provider}:${res.meta?.model}${res.meta?.fallbackUsed ? ' (fallback)' : ''} · ${
+          res.meta?.at ? new Date(res.meta.at).toLocaleString('en-IN') : ''
+        }`,
+      );
+      toast.success(`BRD draft generated via ${res.meta?.provider}`);
+    } catch (e) {
+      // The endpoint surfaces structured attempts on 503. Show whichever
+      // reason is most concrete.
+      const detail = e?.message || String(e);
+      setAiError(detail);
+      toast.error(`AI draft failed — ${detail}`);
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const onSaveDraft = () => {
@@ -176,6 +231,19 @@ export default function BrdEditor() {
           )}
         </div>
         <div className="flex gap-2">
+          {canEdit && brd?.ticketId && (
+            <Button
+              variant="outline"
+              data-testid="brd-generate-ai-btn"
+              onClick={onGenerateDraft}
+              disabled={generating}
+              className="border-red-200 text-red-700 hover:bg-red-50"
+            >
+              {generating
+                ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Generating…</>
+                : <><Wand2 className="h-4 w-4 mr-1" /> Generate draft (AI)</>}
+            </Button>
+          )}
           {canEdit && (
             <Button variant="outline" data-testid="brd-save-btn" onClick={onSaveDraft}>
               <Save className="h-4 w-4 mr-1" /> Save draft
@@ -188,6 +256,31 @@ export default function BrdEditor() {
           )}
         </div>
       </div>
+
+      {/* AI status strip — shown after a successful or failed generation. */}
+      {aiMeta && !aiError && (
+        <div
+          data-testid="brd-ai-meta"
+          className="rounded-md border border-emerald-200 bg-emerald-50 text-emerald-900 px-3 py-2 text-xs flex items-center gap-2"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>
+            AI draft generated via <strong>{aiMeta.provider}</strong>
+            {aiMeta.model ? <> · model <code className="px-1 bg-white/60 rounded">{aiMeta.model}</code></> : null}
+            {aiMeta.fallbackUsed ? ' (fallback)' : ''}
+            {aiMeta.at ? ` · ${new Date(aiMeta.at).toLocaleString('en-IN')}` : ''}.
+          </span>
+          <span className="ml-auto text-emerald-700/70">Edit any section below — every change is audited.</span>
+        </div>
+      )}
+      {aiError && (
+        <div
+          data-testid="brd-ai-error"
+          className="rounded-md border border-red-200 bg-red-50 text-red-900 px-3 py-2 text-xs"
+        >
+          <strong>AI draft failed:</strong> {aiError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
