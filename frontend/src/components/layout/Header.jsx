@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Bell, Search, LogOut, ChevronDown } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -9,11 +10,37 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger
 } from '../ui/dropdown-menu';
 import { MOCK_NOTIFICATIONS, MOCK_USERS } from '../../data/mockData';
+import { api } from '../../lib/api';
+import { isLiveApi } from '../../lib/hydrate';
 
+// Polls /api/notifications every 30s so the bell badge reflects live counts
+// for the current user (including notifications other users just generated).
 export const Header = () => {
   const { user, logout, loginAs } = useAuth();
   const navigate = useNavigate();
-  const unread = MOCK_NOTIFICATIONS.filter((n) => !n.read).length;
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!user?.id) { setUnread(0); return; }
+
+    const computeFromMock = () => MOCK_NOTIFICATIONS
+      .filter((n) => !n.read && (!n.user_id || n.user_id === user.id))
+      .length;
+
+    const refresh = async () => {
+      if (!isLiveApi()) { setUnread(computeFromMock()); return; }
+      try {
+        const rows = await api.listNotifications(user.id);
+        setUnread((rows || []).filter((n) => !n.read).length);
+      } catch (e) {
+        setUnread(computeFromMock());
+      }
+    };
+
+    refresh();
+    const t = setInterval(refresh, 30_000);
+    return () => clearInterval(t);
+  }, [user?.id]);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-gray-200 bg-white/90 backdrop-blur px-4 lg:px-6">

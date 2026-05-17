@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { isLiveApi } from '../lib/hydrate';
+import { notify } from '../lib/notify';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -79,12 +80,14 @@ export default function CoeWorkbench() {
     const t = tickets.find((x) => x.id === ticketId);
     if (!t || t.priority === priority) return;
     updateTicket(ticketId, { priority }, 'Priority', t.priority, priority);
+    notify.priorityChanged(t, t.priority, priority, user?.name);
   };
 
   const changeStatus = (ticketId, status) => {
     const t = tickets.find((x) => x.id === ticketId);
     if (!t || t.status === status) return;
     updateTicket(ticketId, { status }, 'Status', t.status, status);
+    notify.statusChanged(t, t.status, status, user?.name);
   };
 
   const assignPoc = (ticketId, userId) => {
@@ -98,6 +101,7 @@ export default function CoeWorkbench() {
       t.assignedTo || '—',
       u.name,
     );
+    notify.assigned(t, u.id, user?.name);
   };
 
   const exportCSV = () => {

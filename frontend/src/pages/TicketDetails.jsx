@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { isLiveApi } from '../lib/hydrate';
+import { notify } from '../lib/notify';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -101,6 +102,7 @@ export default function TicketDetails() {
     setComments((prev) => [optimistic, ...prev]);
     setNewComment('');
 
+    notify.commentPosted(ticket, user?.id, user?.name || 'Someone', body);
     if (!isLiveApi()) {
       toast.warning('Comment saved locally — connect Supabase to persist.');
       return;
@@ -139,6 +141,7 @@ export default function TicketDetails() {
     };
     setAudit((prev) => [auditEntry, ...prev]);
 
+    notify.descriptionEdited(ticket, user?.name || 'Someone');
     if (!isLiveApi()) {
       toast.warning('Description updated locally — not persisted (demo mode).');
       return;

@@ -1,6 +1,7 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { notify } from '../lib/notify';
 import { MOCK_BRDS, MOCK_TICKETS, ROLES, formatDateTime, relativeTime } from '../data/mockData';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -99,10 +100,13 @@ export default function BrdEditor() {
     toast.success(`BRD saved as ${newV}`);
   };
 
+  const linkedTicket = brd?.ticketId ? MOCK_TICKETS.find((t) => t.id === brd.ticketId) : null;
+
   const onApprove = () => {
     setBrd((p) => ({ ...p, status: 'Approved' }));
     logAudit('Approved', `By ${user?.name}`);
     toast.success('BRD approved');
+    if (linkedTicket) notify.brdApproved(linkedTicket, user?.name || 'POC');
   };
 
   const onRequestEdits = () => {
@@ -113,6 +117,7 @@ export default function BrdEditor() {
       id: `c-${Date.now()}`, author: user?.name || 'POC', role: user?.role || '',
       text: `📝 EDIT REQUEST: ${editRequest}`, at: new Date().toISOString(),
     }, ...prev]);
+    if (linkedTicket) notify.brdEditRequested(linkedTicket, editRequest, user?.name || 'POC');
     setEditRequest('');
   };
 
@@ -134,6 +139,7 @@ export default function BrdEditor() {
     setNewComment('');
     logAudit('Comment added', t.length > 60 ? t.slice(0, 60) + '…' : t);
     toast.success('Comment posted');
+    if (linkedTicket) notify.commentPosted(linkedTicket, user?.id, user?.name || 'Someone', t);
   };
 
   if (!brd) {

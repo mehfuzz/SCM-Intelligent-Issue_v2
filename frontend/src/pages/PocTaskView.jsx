@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { isLiveApi } from '../lib/hydrate';
+import { notify } from '../lib/notify';
 import {
   MOCK_TICKETS, MOCK_USERS, STATUSES, ROLES, IN_PROGRESS_SUBSTAGES_DEFAULT,
   formatINR, formatDate, linearRank, ticketsToCSV, downloadCSV,
@@ -80,6 +81,8 @@ export default function PocTaskView() {
     log(ticketId, 'Status', t.status, status);
     toast.success(`${ticketId}: Status → ${status}`);
     persist(ticketId, { status, notes: patch.inProgressSubStage ? `Sub-stage: ${patch.inProgressSubStage}` : t.notes }, 'Status');
+    notify.statusChanged(t, t.status, status, user?.name);
+    if (status === 'Pending Validation') notify.validationReady(t);
   };
 
   const changeSubStage = (ticketId, sub) => {
@@ -108,6 +111,7 @@ export default function PocTaskView() {
     log(ticket.id, 'JIRA link', ticket.jiraKey ?? '—', jiraKey);
     toast.success(`${ticket.id} linked to JIRA ${jiraKey}`);
     persist(ticket.id, { notes: `JIRA: ${jiraKey}` }, 'JIRA link');
+    notify.jiraLinked(ticket, jiraKey, user?.name);
     setJiraDialog(null);
   };
 
@@ -161,6 +165,7 @@ export default function PocTaskView() {
       { notes: `SLA-change requested to ${hoursNum}h, approver ${approver.name}${sendEmail ? ` (cc ${emailTo.trim()})` : ''}: ${comment}` },
       'SLA-change request'
     );
+    notify.slaChangeRequested(ticket, approver.id, hoursNum, comment);
     setSlaDialog(null);
   };
 
@@ -184,6 +189,7 @@ export default function PocTaskView() {
     } else {
       persist(ticketId, { notes: `SLA change rejected by ${user?.name}` }, 'SLA rejection');
     }
+    notify.slaChangeDecided(next, decision, user?.name);
   };
 
   const exportCSV = () => {

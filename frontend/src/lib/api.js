@@ -80,6 +80,10 @@ export const api = {
   markNotification:  (id, read = true) => request('/notifications', {
     method: 'PATCH', body: JSON.stringify({ id, read }),
   }),
+  // Fan-out post: { recipients: ['u1','u2'], type, title, message, ticketId }
+  postNotification:  (payload) => request('/notifications', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
 
   // Test evidence
   listTestEvidence: (ticketId) => request(`/test-evidence?ticket_id=${encodeURIComponent(ticketId)}`),

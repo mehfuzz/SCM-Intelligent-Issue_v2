@@ -100,12 +100,15 @@ export const computeScores = (ticket, all) => {
   const peopleVals = all.map((t) => Number(imp(t).peopleAffected) || 0);
   const hoursVals  = all.map((t) => Number(imp(t).hoursLostPerWeek) || 0);
   const costVals   = all.map((t) => Number(imp(t).costSavings) || 0);
-  const freqVals   = all.map((t) => FREQ_BASE[imp(t).frequency] ?? 0);
 
   const peopleScore = percentRank(peopleVals, Number(imp(ticket).peopleAffected) || 0);
   const timeScore   = percentRank(hoursVals,  Number(imp(ticket).hoursLostPerWeek) || 0);
   const costScore   = percentRank(costVals,   Number(imp(ticket).costSavings) || 0);
-  const freqScore   = percentRank(freqVals,   FREQ_BASE[imp(ticket).frequency] ?? 0);
+  // Frequency uses the raw base score directly (Daily=100, Weekly=75,
+  // Monthly=40, Annual/Ad-hoc=15) — matches the framework's own demo sheet.
+  // Percentile-adjusting it produced misleading values whenever the dataset
+  // was small or skewed toward a single cadence.
+  const freqScore   = FREQ_BASE[imp(ticket).frequency] ?? 0;
 
   const composite = Math.round(((peopleScore + timeScore + costScore + freqScore) / 4) * 10) / 10;
   return { peopleScore, timeScore, costScore, freqScore, composite };

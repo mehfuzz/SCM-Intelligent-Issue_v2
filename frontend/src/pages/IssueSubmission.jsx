@@ -19,6 +19,7 @@ import {
 } from '../data/mockData';
 import { api } from '../lib/api';
 import { isLiveApi } from '../lib/hydrate';
+import { notify } from '../lib/notify';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -128,6 +129,8 @@ export default function IssueSubmission() {
     if (!isLiveApi()) {
       const id = localFallback();
       toast.warning(`Demo mode: ${id} saved locally only — connect Supabase to persist.`);
+      const created = MOCK_TICKETS.find((t) => t.id === id);
+      if (created) notify.ticketSubmitted(created);
       setSubmitting(false);
       navigate('/dashboard');
       return;
@@ -137,6 +140,7 @@ export default function IssueSubmission() {
       const created = await api.createTicket(payload);
       toast.success(`Issue submitted — Ticket ID ${created.id}`);
       MOCK_TICKETS.unshift(created);
+      notify.ticketSubmitted(created);
       navigate('/dashboard');
     } catch (e) {
       console.warn('[submit] API failed', e);
