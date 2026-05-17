@@ -48,17 +48,27 @@ export default function Reports() {
     return MOCK_TICKETS;
   }, [user, isSubmitter, isPocOwner]);
 
-  const rows = useMemo(() => scoped.filter((t) =>
-    (q ? (t.title.toLowerCase().includes(q.toLowerCase()) || t.id.toLowerCase().includes(q.toLowerCase())) : true) &&
-    (modFilter === 'all' ? true : t.module === modFilter) &&
-    (catFilter === 'all' ? true : t.category === catFilter) &&
-    (statusFilter === 'all'
-      ? true
-      : statusFilter === 'open'
-        ? t.status !== 'Closed'
-        : t.status === statusFilter) &&
-    (slaFilter === 'all' ? true : t.sla?.state === slaFilter)
-  ), [scoped, q, modFilter, catFilter, statusFilter, slaFilter]);
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const matchesSearch = (t) => {
+      if (!needle) return true;
+      return [
+        t.id, t.title, t.module, t.subProcess, t.function,
+        t.category, t.description, t.assignedTo, t.submittedBy,
+      ].some((s) => (s == null ? '' : String(s).toLowerCase()).includes(needle));
+    };
+    return scoped.filter((t) =>
+      matchesSearch(t) &&
+      (modFilter === 'all' ? true : t.module === modFilter) &&
+      (catFilter === 'all' ? true : t.category === catFilter) &&
+      (statusFilter === 'all'
+        ? true
+        : statusFilter === 'open'
+          ? t.status !== 'Closed'
+          : t.status === statusFilter) &&
+      (slaFilter === 'all' ? true : t.sla?.state === slaFilter)
+    );
+  }, [scoped, q, modFilter, catFilter, statusFilter, slaFilter]);
 
   const exportCSV = () => {
     const csv = ticketsToCSV(rows);

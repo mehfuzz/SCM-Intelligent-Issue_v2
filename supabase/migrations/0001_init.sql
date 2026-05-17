@@ -29,8 +29,20 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create type frequency_band as enum ('Daily','Weekly','Monthly','Ad-hoc');
+  create type frequency_band as enum ('Daily','Weekly','Monthly','Annual','Ad-hoc');
 exception when duplicate_object then null; end $$;
+
+-- For databases initialised before 'Annual' was added, extend the enum.
+do $$
+begin
+  if not exists (
+    select 1 from pg_type t
+    join pg_enum e on t.oid = e.enumtypid
+    where t.typname = 'frequency_band' and e.enumlabel = 'Annual'
+  ) then
+    alter type frequency_band add value 'Annual' after 'Monthly';
+  end if;
+end $$;
 
 do $$ begin
   create type sla_state as enum ('on-track','at-risk','breached');

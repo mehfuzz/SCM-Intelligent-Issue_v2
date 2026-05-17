@@ -33,8 +33,16 @@ export default function CoeWorkbench() {
 
   const ranked = useMemo(() => linearRank(tickets), [tickets]);
 
+  const needle = q.trim().toLowerCase();
+  const matchesSearch = (t) => {
+    if (!needle) return true;
+    return [
+      t.id, t.title, t.module, t.subProcess, t.function,
+      t.category, t.description, t.assignedTo, t.submittedBy,
+    ].some((s) => (s == null ? '' : String(s).toLowerCase()).includes(needle));
+  };
   const visible = ranked.filter((t) =>
-    (q ? (t.title.toLowerCase().includes(q.toLowerCase()) || t.id.toLowerCase().includes(q.toLowerCase())) : true) &&
+    matchesSearch(t) &&
     (prioFilter === 'all' ? true : t.priority === prioFilter) &&
     (statusFilter === 'all' ? true : t.status === statusFilter)
   );

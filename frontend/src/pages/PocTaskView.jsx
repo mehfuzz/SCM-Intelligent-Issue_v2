@@ -113,9 +113,10 @@ export default function PocTaskView() {
 
   // SLA change is no longer applied directly — POC sends an *approval request*
   // to a selected COE Admin / Leadership user. Both sides are audited.
+  // Optionally, an email can be drafted to the approver.
   const submitSlaChange = () => {
     if (!slaDialog) return;
-    const { ticket, hours, comment, approverId } = slaDialog;
+    const { ticket, hours, comment, approverId, sendEmail, emailTo } = slaDialog;
     const hoursNum = Number(hours);
     if (!hoursNum || hoursNum <= 0)  { toast.error('Enter a valid SLA in hours'); return; }
     if (!comment.trim())              { toast.error('Justification comment is mandatory'); return; }
@@ -123,7 +124,15 @@ export default function PocTaskView() {
     const approver = approvers.find((a) => a.id === approverId);
     if (!approver)                    { toast.error('Approver not found'); return; }
 
-    // Mark ticket as having a pending SLA-change request (rendered as a chip in UI)
+    // If "Send email" is checked, validate the email field.
+    if (sendEmail) {
+      const e = (emailTo || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+        toast.error('Enter a valid email address for the approver, or uncheck "Send email"');
+        return;
+      }
+    }
+
     setTickets((prev) => prev.map((x) =>
       x.id === ticket.id
         ? { ...x, slaChangeRequest: {
@@ -131,6 +140,7 @@ export default function PocTaskView() {
             requestedHours: hoursNum, justification: comment,
             approverName: approver.name, approverId: approver.id,
             requestedAt: new Date().toISOString(), status: 'Pending',
+            emailTo: sendEmail ? emailTo.trim() : null,
           } }
         : x
     ));
@@ -138,12 +148,19 @@ export default function PocTaskView() {
       ticket.id,
       'SLA change requested',
       `${ticket.sla?.resolutionHours ?? '—'}h`,
-      `${hoursNum}h → ${approver.name}`,
+      `${hoursNum}h → ${approver.name}${sendEmail ? ` (emailed to ${emailTo.trim()})` : ''}`,
       comment
     );
-    toast.success(`${ticket.id}: SLA change request sent to ${approver.name}`);
-    // Persist the request as a note + audit-log entry (not the SLA itself).
-    persist(ticket.id, { notes: `SLA-change requested to ${hoursNum}h, approver ${approver.name}: ${comment}` }, 'SLA-change request');
+    toast.success(
+      sendEmail
+        ? `${ticket.id}: SLA change sent to ${approver.name} (email queued to ${emailTo.trim()})`
+        : `${ticket.id}: SLA change request sent to ${approver.name}`
+    );
+    persist(
+      ticket.id,
+      { notes: `SLA-change requested to ${hoursNum}h, approver ${approver.name}${sendEmail ? ` (cc ${emailTo.trim()})` : ''}: ${comment}` },
+      'SLA-change request'
+    );
     setSlaDialog(null);
   };
 
@@ -406,6 +423,37 @@ export default function PocTaskView() {
                 placeholder="Why is this change required?"
                 className="mt-1"
               />
+            </div>
+            <div className="rounded-md border border-gray-200 p-3 space-y-2">
+              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                <input
+                  data-testid="poc-sla-email-checkbox"
+                  type="checkbox"
+                  checked={!!slaDialog?.sendEmail}
+                  onChange={(e) => setSlaDialog((p) => {
+                    const sendEmail = e.target.checked;
+                    const fallbackEmail = (approvers.find((a) => a.id === p?.approverId)?.email) || '';
+                    return { ...p, sendEmail, emailTo: p.emailTo || fallbackEmail };
+                  })}
+                />
+                Send approval request as email
+              </label>
+              {slaDialog?.sendEmail && (
+                <div>
+                  <Label className="text-xs font-semibold">Approver email *</Label>
+                  <Input
+                    data-testid="poc-sla-email-to"
+                    type="email"
+                    value={slaDialog?.emailTo ?? ''}
+                    onChange={(e) => setSlaDialog((p) => ({ ...p, emailTo: e.target.value }))}
+                    placeholder="approver@airtel.in"
+                    className="mt-1"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    The request will be drafted with the ticket ID, justification, and a link to approve.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

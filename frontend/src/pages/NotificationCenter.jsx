@@ -33,21 +33,35 @@ export default function NotificationCenter() {
   const [tab, setTab] = useState('all');
   const [loading, setLoading] = useState(false);
 
-  // Lazy-load from backend when API is live and we know the user.
+  // Lazy-load from backend when API is live and we know the user. When the
+  // API isn't live we keep MOCK_NOTIFICATIONS so the UI is never empty.
   useEffect(() => {
-    if (!user?.id || !isLiveApi()) return;
+    if (!user?.id) return;
+    if (!isLiveApi()) {
+      // Still scope mock data to this user where possible.
+      setItems(MOCK_NOTIFICATIONS.filter((n) => !n.user_id || n.user_id === user.id));
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     api.listNotifications(user.id)
       .then((rows) => {
         if (cancelled) return;
-        setItems((rows || []).map((r) => ({
+        const list = (rows || []).map((r) => ({
           id: r.id, type: r.type, title: r.title, message: r.message,
           ticketId: r.ticket_id, at: r.at, read: !!r.read,
-        })));
+        }));
+        setItems(list);
+        if (!rows || rows.length === 0) {
+          // Show an explicit empty-state instead of falling silent.
+          console.info('[notifications] empty list for user', user.id);
+        }
       })
-      .catch((err) => console.warn('[notifications] fetch failed', err))
-      .finally(() => !cancelled && setLoading(false));
+      .catch((err) => {
+        console.warn('[notifications] fetch failed', err);
+        toast.error(`Failed to load notifications: ${err?.message || 'API error'}`);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [user?.id]);
 

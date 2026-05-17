@@ -46,7 +46,10 @@ export const CATEGORIES = [
   'Dashboard & Reporting',
 ];
 
-export const FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Ad-hoc'];
+// Frequencies as required by the user: Daily, Weekly, Monthly, Annual.
+// We also accept the legacy 'Ad-hoc' value (same weight as Annual) so existing
+// DB rows from the earlier framework don't break the scoring formula.
+export const FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Annual'];
 export const STATUSES   = ['Submitted', 'Triaged', 'POC Assigned', 'In Progress', 'Pending Validation', 'Closed', 'Reopened'];
 export const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
 
@@ -66,7 +69,16 @@ export const IN_PROGRESS_SUBSTAGES_DEFAULT = [
 // Priority calculation (mirrors Framework "Prioritisation Parameters" sheet)
 // -----------------------------------------------------------------------------
 
-const FREQ_BASE = { 'Daily': 100, 'Weekly': 75, 'Monthly': 40, 'Ad-hoc': 15 };
+// Frequency base scores per the framework.
+// 'Annual' is the new canonical low-frequency value; 'Ad-hoc' is kept as an
+// alias for legacy seed rows so they still score consistently.
+export const FREQ_BASE = {
+  Daily:    100,
+  Weekly:   75,
+  Monthly:  40,
+  Annual:   15,
+  'Ad-hoc': 15, // legacy alias — scored same as Annual
+};
 
 // Percentile rank on 0..100 scale (Excel PERCENTRANK semantics, INC)
 const percentRank = (values, v) => {
@@ -80,26 +92,45 @@ const percentRank = (values, v) => {
   return Math.round((below / (n - 1)) * 1000) / 10;
 };
 
-export const computeScores = (ticket, all) => {
-  const peopleVals = all.map((t) => Number(t.impact.peopleAffected) || 0);
-  const hoursVals  = all.map((t) => Number(t.impact.hoursLostPerWeek) || 0);
-  const costVals   = all.map((t) => Number(t.impact.costSavings) || 0);
-  const freqVals   = all.map((t) => FREQ_BASE[t.impact.frequency] ?? 0);
+// Defensive impact accessor — handles tickets that arrive without an impact
+// envelope (older rows, partial API payloads, etc.) without throwing.
+const imp = (t) => t?.impact || {};
 
-  const peopleScore = percentRank(peopleVals, Number(ticket.impact.peopleAffected) || 0);
-  const timeScore   = percentRank(hoursVals,  Number(ticket.impact.hoursLostPerWeek) || 0);
-  const costScore   = percentRank(costVals,   Number(ticket.impact.costSavings) || 0);
-  const freqScore   = percentRank(freqVals,   FREQ_BASE[ticket.impact.frequency] ?? 0);
+export const computeScores = (ticket, all) => {
+  const peopleVals = all.map((t) => Number(imp(t).peopleAffected) || 0);
+  const hoursVals  = all.map((t) => Number(imp(t).hoursLostPerWeek) || 0);
+  const costVals   = all.map((t) => Number(imp(t).costSavings) || 0);
+  const freqVals   = all.map((t) => FREQ_BASE[imp(t).frequency] ?? 0);
+
+  const peopleScore = percentRank(peopleVals, Number(imp(ticket).peopleAffected) || 0);
+  const timeScore   = percentRank(hoursVals,  Number(imp(ticket).hoursLostPerWeek) || 0);
+  const costScore   = percentRank(costVals,   Number(imp(ticket).costSavings) || 0);
+  const freqScore   = percentRank(freqVals,   FREQ_BASE[imp(ticket).frequency] ?? 0);
 
   const composite = Math.round(((peopleScore + timeScore + costScore + freqScore) / 4) * 10) / 10;
   return { peopleScore, timeScore, costScore, freqScore, composite };
 };
 
+// Case-insensitive compliance check so 'Yes' / 'yes' / 'YES' / 'true' all
+// trigger the Priority Zero override.
+export const isComplianceYes = (v) =>
+  v === true || (typeof v === 'string' && v.trim().toLowerCase() === 'yes');
+
 export const computeTier = (composite, complianceRisk) => {
-  if (complianceRisk === 'Yes') return 'P0';
+  if (isComplianceYes(complianceRisk)) return 'P0';
   if (composite >= 70) return 'P1';
   if (composite >= 40) return 'P2';
   return 'P3';
+};
+
+// Comparator used wherever we need "P0 first, then by composite desc".
+// Lower priority code (P0 < P1 < P2 < P3) wins; ties broken by higher
+// composite score.
+export const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 };
+export const byPriorityThenComposite = (a, b) => {
+  const dp = (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9);
+  if (dp !== 0) return dp;
+  return (b.composite || 0) - (a.composite || 0);
 };
 
 export const tierLabel = (tier) => {
@@ -112,20 +143,19 @@ export const tierLabel = (tier) => {
   }
 };
 
-// Linear ranking: P0 (compliance) first (sorted by composite asc to mirror Excel),
-// then everyone else by composite desc.
+// Linear ranking. P0 (compliance overrides) come first — within P0 we sort
+// by composite DESC (high-impact compliance risks rank first; this differs
+// from the original Excel demo but is the prioritisation behaviour the user
+// asked for: "P0 first and then based on priority scores"). Non-P0 tickets
+// then sort by composite descending.
 export const linearRank = (tickets) => {
   const withScores = tickets.map((t) => {
     const scores = computeScores(t, tickets);
-    const tier = computeTier(scores.composite, t.impact.complianceRisk);
+    const tier = computeTier(scores.composite, imp(t).complianceRisk);
     return { ...t, scores, tier };
   });
-  const p0 = withScores
-    .filter((t) => t.tier === 'P0')
-    .sort((a, b) => a.scores.composite - b.scores.composite);
-  const rest = withScores
-    .filter((t) => t.tier !== 'P0')
-    .sort((a, b) => b.scores.composite - a.scores.composite);
+  const p0   = withScores.filter((t) => t.tier === 'P0').sort((a, b) => b.scores.composite - a.scores.composite);
+  const rest = withScores.filter((t) => t.tier !== 'P0').sort((a, b) => b.scores.composite - a.scores.composite);
   return [...p0, ...rest].map((t, i) => ({ ...t, rank: i + 1 }));
 };
 

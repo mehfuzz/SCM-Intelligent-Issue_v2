@@ -1,7 +1,12 @@
 // Server-side mirror of the frontend prioritisation engine. Kept in sync with
 // frontend/src/data/mockData.js — same percentile semantics, same composite.
 
-const FREQ_BASE = { Daily: 100, Weekly: 75, Monthly: 40, 'Ad-hoc': 15 };
+// 'Annual' is the canonical low-frequency value; 'Ad-hoc' is a legacy alias
+// kept for back-compat so older rows score consistently.
+const FREQ_BASE = { Daily: 100, Weekly: 75, Monthly: 40, Annual: 15, 'Ad-hoc': 15 };
+
+const isComplianceYes = (v) =>
+  v === true || (typeof v === 'string' && v.trim().toLowerCase() === 'yes');
 
 const percentRank = (values, v) => {
   if (!values.length) return 0;
@@ -32,9 +37,9 @@ export const computeScoresAndTier = (ticket, all) => {
 
   const compliance = ticket.compliance_risk ?? ticket.impact?.complianceRisk;
   let tier = 'P3';
-  if (compliance === 'Yes') tier = 'P0';
-  else if (composite >= 70) tier = 'P1';
-  else if (composite >= 40) tier = 'P2';
+  if (isComplianceYes(compliance))   tier = 'P0';
+  else if (composite >= 70)          tier = 'P1';
+  else if (composite >= 40)          tier = 'P2';
 
   return { peopleScore, timeScore, costScore, freqScore, composite, tier };
 };

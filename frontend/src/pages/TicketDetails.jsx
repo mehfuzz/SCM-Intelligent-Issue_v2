@@ -122,10 +122,14 @@ export default function TicketDetails() {
     if (!next) { toast.error('Description cannot be empty'); return; }
     if (next === ticket.description) { setEditingDesc(false); return; }
     const before = ticket.description;
+
+    // Optimistic local update — both the component state AND the shared
+    // MOCK_TICKETS array, so navigating away and back picks up the new value.
     setTicket((t) => ({ ...t, description: next }));
+    const idx = MOCK_TICKETS.findIndex((t) => t.id === ticket.id);
+    if (idx !== -1) MOCK_TICKETS[idx] = { ...MOCK_TICKETS[idx], description: next };
     setEditingDesc(false);
 
-    // Optimistic audit entry.
     const auditEntry = {
       id: `local-${Date.now()}`,
       at: new Date().toISOString(),
@@ -140,7 +144,12 @@ export default function TicketDetails() {
       return;
     }
     try {
-      await api.patchTicket(ticket.id, { description: next });
+      const saved = await api.patchTicket(ticket.id, { description: next });
+      // Trust the server payload — re-sync local + shared store.
+      if (saved?.description) {
+        setTicket((t) => ({ ...t, description: saved.description }));
+        if (idx !== -1) MOCK_TICKETS[idx] = { ...MOCK_TICKETS[idx], description: saved.description };
+      }
       toast.success('Description updated');
     } catch (e) {
       toast.error(`Save failed: ${e?.message || 'API error'}`);

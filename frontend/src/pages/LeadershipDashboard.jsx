@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import {
   MOCK_TICKETS, MOCK_USERS, ROLES, CATEGORIES, MODULES,
   formatINR, formatDate, linearRank, ticketsToCSV, downloadCSV,
+  byPriorityThenComposite,
 } from '../data/mockData';
 import { KpiCard } from '../components/shared/KpiCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -52,10 +53,23 @@ export default function LeadershipDashboard() {
     : 0;
 
   // -------- chart datasets --------
+  // Union of canonical CATEGORIES and any distinct category strings actually
+  // present in the data. This way the chart shows both the new 8-item
+  // taxonomy AND any legacy category values still in the DB without dropping
+  // anything from the picture.
+  const allCategoryNames = useMemo(() => {
+    const seen = new Set(CATEGORIES);
+    tickets.forEach((t) => { if (t.category) seen.add(t.category); });
+    return Array.from(seen);
+  }, [tickets]);
+  const byCategory = allCategoryNames
+    .map((c) => ({ name: c, value: tickets.filter((t) => t.category === c).length }))
+    .sort((a, b) => b.value - a.value);
   // Always include every module — empty modules show as 0 so leadership can
   // see the full coverage map, not just the ones with traffic.
-  const byCategory = CATEGORIES.map((c) => ({ name: c, value: tickets.filter((t) => t.category === c).length }));
-  const byModule   = MODULES.map((m) => ({ name: m, value: tickets.filter((t) => t.module === m).length }));
+  const byModule = MODULES
+    .map((m) => ({ name: m, value: tickets.filter((t) => t.module === m).length }))
+    .sort((a, b) => b.value - a.value);
   const byPriority = ['P0', 'P1', 'P2', 'P3'].map((p) => ({
     name: p,
     open:   tickets.filter((t) => t.priority === p && t.status !== 'Closed').length,
@@ -77,10 +91,11 @@ export default function LeadershipDashboard() {
     value: tickets.filter((t) => t.module === m && t.status === 'Reopened').length,
   }));
 
-  // Top 5 pending issues by composite score (highest impact, still open).
+  // Top 5 pending issues: P0 first (compliance overrides), then by composite
+  // descending within each tier.
   const topPending = [...tickets]
     .filter((t) => t.status !== 'Closed')
-    .sort((a, b) => (b.composite || 0) - (a.composite || 0))
+    .sort(byPriorityThenComposite)
     .slice(0, 5);
 
   // Per-POC report
@@ -100,15 +115,38 @@ export default function LeadershipDashboard() {
     };
   });
 
-  // Trend (synthetic but module-aware)
-  const trend = [
-    { m: 'Nov', submitted: 14, resolved: 10 },
-    { m: 'Dec', submitted: 18, resolved: 15 },
-    { m: 'Jan', submitted: 22, resolved: 19 },
-    { m: 'Feb', submitted: 25, resolved: 24 },
-    { m: 'Mar', submitted: 28, resolved: 22 },
-    { m: 'Apr', submitted: tickets.length, resolved: closed },
-  ];
+  // Submission-vs-resolution trend, computed from actual ticket dates.
+  // We bucket by YYYY-MM and roll forward the last 6 months ending in the
+  // current month.
+  const trend = useMemo(() => {
+    const buckets = new Map();   // key 'YYYY-MM' → { m, submitted, resolved }
+    const today = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      buckets.set(k, {
+        m: d.toLocaleString('en-IN', { month: 'short' }),
+        submitted: 0,
+        resolved: 0,
+      });
+    }
+    tickets.forEach((t) => {
+      const sub = t.submittedAt ? new Date(t.submittedAt) : null;
+      if (sub && !isNaN(sub)) {
+        const k = `${sub.getFullYear()}-${String(sub.getMonth() + 1).padStart(2, '0')}`;
+        const b = buckets.get(k);
+        if (b) b.submitted++;
+      }
+      // We don't store closed_at; if the ticket is Closed, count it in its
+      // submission bucket as resolved (best-effort).
+      if (t.status === 'Closed' && sub && !isNaN(sub)) {
+        const k = `${sub.getFullYear()}-${String(sub.getMonth() + 1).padStart(2, '0')}`;
+        const b = buckets.get(k);
+        if (b) b.resolved++;
+      }
+    });
+    return Array.from(buckets.values());
+  }, [tickets]);
 
   // -------- drill-down helper --------
   const openDrill = (title, filterFn) => {
@@ -259,14 +297,20 @@ export default function LeadershipDashboard() {
               <CardContent className="p-5">
                 <ResponsiveContainer width="100%" height={240}>
                   <PieChart>
-                    <Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={2}
-                         onDoubleClick={(_, idx) => openDrill(`Category: ${byCategory[idx].name}`, (t) => t.category === byCategory[idx].name)}>
-                      {byCategory.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    <Pie
+                      data={byCategory.filter((c) => c.value > 0)}
+                      dataKey="value" nameKey="name"
+                      innerRadius={50} outerRadius={90} paddingAngle={2}
+                      onDoubleClick={(e) => e?.name && openDrill(`Category: ${e.name}`, (t) => t.category === e.name)}>
+                      {byCategory.filter((c) => c.value > 0).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #E5E7EB' }} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                   </PieChart>
                 </ResponsiveContainer>
+                {byCategory.every((c) => c.value === 0) && (
+                  <p className="text-center text-xs text-gray-500 mt-2">No category data yet.</p>
+                )}
               </CardContent>
             </Card>
 

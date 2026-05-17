@@ -26,13 +26,16 @@ export default function HomeDashboard() {
 
   const filteredTickets = useMemo(() => {
     if (!q.trim()) return myTickets;
-    const needle = q.toLowerCase();
-    return myTickets.filter((t) =>
-      t.id.toLowerCase().includes(needle) ||
-      t.title.toLowerCase().includes(needle) ||
-      (t.module || '').toLowerCase().includes(needle) ||
-      (t.category || '').toLowerCase().includes(needle)
-    );
+    const needle = q.trim().toLowerCase();
+    return myTickets.filter((t) => {
+      // Search across the most useful free-text fields. Null-safe so a single
+      // missing field never breaks the whole filter.
+      const haystack = [
+        t.id, t.title, t.module, t.subProcess, t.function,
+        t.category, t.description, t.assignedTo, t.submittedBy,
+      ].map((s) => (s == null ? '' : String(s).toLowerCase()));
+      return haystack.some((s) => s.includes(needle));
+    });
   }, [myTickets, q]);
 
   const open = filteredTickets.filter((t) => !['Closed'].includes(t.status));
