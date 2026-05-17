@@ -4,7 +4,9 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { Toaster } from './components/ui/sonner';
 import { DemoModeBanner } from './components/shared/DemoModeBanner';
+import { RoleGuard } from './components/shared/RoleGuard';
 import { hydrateFromApi } from './lib/hydrate';
+import { ROLES } from './data/mockData';
 
 import Login from './pages/Login';
 import HomeDashboard from './pages/HomeDashboard';
@@ -74,17 +76,49 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<HomeDashboard />} />
+
+              {/* Submission flow — anyone authenticated can file an issue */}
               <Route path="/issues/new" element={<IssueSubmission />} />
+
+              {/* Ticket detail / validation — page-level guard checks the
+                  specific ticket's submitter/assignee against current user */}
               <Route path="/tickets/:id" element={<TicketDetails />} />
               <Route path="/tickets/:id/validate" element={<ValidationScreen />} />
               <Route path="/validate" element={<ValidationScreen />} />
-              <Route path="/coe-workbench" element={<CoeWorkbench />} />
-              <Route path="/poc-tasks" element={<PocTaskView />} />
+
+              {/* Role-restricted areas */}
+              <Route path="/coe-workbench" element={
+                <RoleGuard allow={[ROLES.COE_ADMIN, ROLES.SYSTEM_ADMIN]}>
+                  <CoeWorkbench />
+                </RoleGuard>
+              } />
+              <Route path="/poc-tasks" element={
+                <RoleGuard allow={[ROLES.POC_OWNER]}>
+                  <PocTaskView />
+                </RoleGuard>
+              } />
+              <Route path="/sla-monitor" element={
+                <RoleGuard allow={[ROLES.COE_ADMIN, ROLES.LEADERSHIP, ROLES.SYSTEM_ADMIN]}>
+                  <SlaMonitor />
+                </RoleGuard>
+              } />
+              <Route path="/leadership" element={
+                <RoleGuard allow={[ROLES.LEADERSHIP, ROLES.SYSTEM_ADMIN]}>
+                  <LeadershipDashboard />
+                </RoleGuard>
+              } />
+              <Route path="/admin" element={
+                <RoleGuard allow={[ROLES.SYSTEM_ADMIN]}>
+                  <AdminConsole />
+                </RoleGuard>
+              } />
+
+              {/* BRD list / editor — open to all roles; the list is
+                  per-role scoped (BrdList) and the editor guards
+                  per-ticket (BrdEditor → canViewBrd). */}
               <Route path="/brd" element={<BrdIndexOrEditor />} />
               <Route path="/brd/:id" element={<BrdEditor />} />
-              <Route path="/sla-monitor" element={<SlaMonitor />} />
-              <Route path="/leadership" element={<LeadershipDashboard />} />
-              <Route path="/admin" element={<AdminConsole />} />
+
               <Route path="/notifications" element={<NotificationCenter />} />
               <Route path="/reports" element={<Reports />} />
             </Route>

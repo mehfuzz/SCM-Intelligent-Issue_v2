@@ -193,7 +193,9 @@ export default function HomeDashboard() {
             <CardHeader className="border-b border-gray-100"><CardTitle className="font-display text-lg">Notifications</CardTitle></CardHeader>
             <CardContent className="p-0">
               <ul className="divide-y divide-gray-100">
-                {MOCK_NOTIFICATIONS.slice(0, 4).map((n) => (
+                {MOCK_NOTIFICATIONS
+                  .filter((n) => !n.user_id || n.user_id === user.id)
+                  .slice(0, 4).map((n) => (
                   <li
                     key={n.id}
                     onClick={() => navigate(`/tickets/${n.ticketId}`)}

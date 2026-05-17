@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { notify } from '../lib/notify';
 import { MOCK_BRDS, MOCK_TICKETS, ROLES, formatDateTime, relativeTime } from '../data/mockData';
+import { canViewBrd } from '../lib/access';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -14,7 +15,7 @@ import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Check, FileText, History, X, Upload, MessageSquare, Send, Sparkles, Save,
-  Wand2, Loader2,
+  Wand2, Loader2, ShieldAlert,
 } from 'lucide-react';
 
 // Build a fresh BRD draft from a ticket — used when a Submitter clicks
@@ -233,6 +234,30 @@ export default function BrdEditor() {
         <h2 className="font-display text-2xl">No BRD selected</h2>
         <p className="text-sm text-gray-500 mt-2">Open a ticket and click "Open BRD" to start.</p>
         <Button onClick={() => navigate('/dashboard')} className="mt-4">Back to dashboard</Button>
+      </div>
+    );
+  }
+
+  // Per-BRD access guard. The BRD is reachable by anyone who can see the
+  // underlying ticket (submitter, assignee, COE/Leadership/Sys Admin).
+  // Anyone else hitting /brd/<id> directly is blocked here — no fields,
+  // no version history, nothing leaks.
+  const brdTicket = brd.ticketId ? MOCK_TICKETS.find((t) => t.id === brd.ticketId) : null;
+  if (brdTicket && !canViewBrd(user, brdTicket)) {
+    return (
+      <div className="max-w-lg mx-auto py-16" data-testid="brd-access-denied">
+        <div className="border border-red-200 rounded-lg p-6 text-center bg-white shadow-sm">
+          <ShieldAlert className="h-10 w-10 text-red-600 mx-auto mb-3" />
+          <h2 className="font-display text-2xl font-bold text-gray-900">
+            You don't have access to this BRD
+          </h2>
+          <p className="text-sm text-gray-600 mt-2">
+            BRDs are visible to the underlying ticket's submitter, assigned POC owner, and the COE team.
+          </p>
+          <Button className="mt-5 bg-red-600 hover:bg-red-700" onClick={() => navigate('/brd')}>
+            Back to BRD list
+          </Button>
+        </div>
       </div>
     );
   }

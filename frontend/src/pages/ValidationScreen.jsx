@@ -2,12 +2,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { MOCK_TICKETS, ROLES, formatDateTime } from '../data/mockData';
+import { canViewTicket } from '../lib/access';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { PriorityBadge, StatusBadge } from '../components/shared/Badges';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, X, ShieldCheck, ExternalLink, Image as ImageIcon, FileText } from 'lucide-react';
+import { ArrowLeft, Check, X, ShieldCheck, ShieldAlert, ExternalLink, Image as ImageIcon, FileText } from 'lucide-react';
 
 export default function ValidationScreen() {
   const { id } = useParams();
@@ -29,6 +30,26 @@ export default function ValidationScreen() {
         <h2 className="font-display text-2xl">Nothing to validate</h2>
         <p className="text-sm text-gray-500 mt-2">There are no tickets pending your validation right now.</p>
         <Button onClick={() => navigate('/dashboard')} className="mt-4">Back to dashboard</Button>
+      </div>
+    );
+  }
+
+  // Block direct-link access to a ticket the user isn't a party to.
+  if (!canViewTicket(user, ticket)) {
+    return (
+      <div className="max-w-lg mx-auto py-16" data-testid="validation-access-denied">
+        <div className="border border-red-200 rounded-lg p-6 text-center bg-white shadow-sm">
+          <ShieldAlert className="h-10 w-10 text-red-600 mx-auto mb-3" />
+          <h2 className="font-display text-2xl font-bold text-gray-900">
+            You don't have access to validate this ticket
+          </h2>
+          <p className="text-sm text-gray-600 mt-2">
+            Validation is restricted to the original submitter and the COE team.
+          </p>
+          <Button className="mt-5 bg-red-600 hover:bg-red-700" onClick={() => navigate('/dashboard')}>
+            Back to dashboard
+          </Button>
+        </div>
       </div>
     );
   }

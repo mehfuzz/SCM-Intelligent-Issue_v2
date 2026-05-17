@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { isLiveApi } from '../lib/hydrate';
 import { notify } from '../lib/notify';
+import { canViewTicket } from '../lib/access';
+import { ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -82,9 +84,32 @@ export default function TicketDetails() {
 
   if (!ticket) {
     return (
-      <div className="text-center py-20">
+      <div className="text-center py-20" data-testid="ticket-not-found">
         <h2 className="font-display text-2xl">Ticket not found</h2>
         <Button onClick={() => navigate('/dashboard')} className="mt-4">Back to dashboard</Button>
+      </div>
+    );
+  }
+
+  // Per-ticket access guard. Submitters / POC owners can only open tickets
+  // they're a party to; everything else (COE, Leadership, Sys Admin) sees
+  // everything. Direct-link access for unauthorized users hits this branch
+  // — we never leak any ticket field.
+  if (!canViewTicket(user, ticket)) {
+    return (
+      <div className="max-w-lg mx-auto py-16" data-testid="ticket-access-denied">
+        <div className="border border-red-200 rounded-lg p-6 text-center bg-white shadow-sm">
+          <ShieldAlert className="h-10 w-10 text-red-600 mx-auto mb-3" />
+          <h2 className="font-display text-2xl font-bold text-gray-900">
+            You don't have access to this ticket
+          </h2>
+          <p className="text-sm text-gray-600 mt-2">
+            Tickets are visible to their submitter, the assigned POC owner, and the COE team only.
+          </p>
+          <Button className="mt-5 bg-red-600 hover:bg-red-700" onClick={() => navigate('/dashboard')}>
+            Back to dashboard
+          </Button>
+        </div>
       </div>
     );
   }

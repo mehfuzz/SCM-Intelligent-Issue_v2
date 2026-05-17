@@ -29,10 +29,12 @@ export default function PocTaskView() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Start with only issues assigned to this POC. Fall back to a demo set if empty.
+  // POC Owners only ever see issues assigned to them. No demo fallback —
+  // an empty assignee list MUST render as empty (otherwise we'd leak
+  // tickets that don't belong to this user).
   const initial = useMemo(() => {
-    const mine = MOCK_TICKETS.filter((t) => t.assignedToId === user?.id);
-    return mine.length ? mine : MOCK_TICKETS.slice(0, 3); // demo fallback
+    if (!user?.id) return [];
+    return MOCK_TICKETS.filter((t) => t.assignedToId === user.id);
   }, [user]);
 
   const [tickets, setTickets] = useState(initial);
