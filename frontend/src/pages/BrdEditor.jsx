@@ -48,19 +48,30 @@ export default function BrdEditor() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Resolve which BRD this page is rendering. Three entry paths:
-  //   1. /brd/BRD-001         → load by id
+  // Resolve which BRD this page is rendering. Entry paths:
+  //   1. /brd/BRD-001         → load by id; if MOCK_BRDS doesn't have a
+  //                              template, draft from the ticket that owns
+  //                              that brdId so the page is never empty.
   //   2. /brd?ticket=SCM-NNN  → draft a new BRD for that ticket
-  //   3. /brd                 → fall back to the first sample BRD
+  //   3. /brd                 → handled by the parent route (BrdList);
+  //                              this component only renders here for
+  //                              direct-link or auto-generate flows.
   const initialBrd = useMemo(() => {
-    if (id && MOCK_BRDS[id]) return MOCK_BRDS[id];
+    if (id) {
+      if (MOCK_BRDS[id]) return MOCK_BRDS[id];
+      const owner = MOCK_TICKETS.find((x) => x.brdId === id);
+      if (owner) {
+        // Same as draftFromTicket but keep the canonical BRD id so the URL
+        // remains /brd/BRD-XYZ rather than the auto-derived one.
+        return { ...draftFromTicket(owner), id };
+      }
+    }
     const ticketParam = searchParams.get('ticket');
     if (ticketParam) {
       const t = MOCK_TICKETS.find((x) => x.id === ticketParam);
       if (t) return draftFromTicket(t);
     }
-    const firstKey = Object.keys(MOCK_BRDS)[0];
-    return MOCK_BRDS[firstKey] || draftFromTicket(MOCK_TICKETS[0]);
+    return null;
   }, [id, searchParams]);
 
   const [brd, setBrd] = useState(initialBrd);

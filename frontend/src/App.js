@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { Toaster } from './components/ui/sonner';
@@ -13,12 +13,22 @@ import TicketDetails from './pages/TicketDetails';
 import CoeWorkbench from './pages/CoeWorkbench';
 import PocTaskView from './pages/PocTaskView';
 import BrdEditor from './pages/BrdEditor';
+import BrdList from './pages/BrdList';
 import SlaMonitor from './pages/SlaMonitor';
 import ValidationScreen from './pages/ValidationScreen';
 import LeadershipDashboard from './pages/LeadershipDashboard';
 import AdminConsole from './pages/AdminConsole';
 import NotificationCenter from './pages/NotificationCenter';
 import Reports from './pages/Reports';
+
+// `/brd` is normally the role-scoped list page. When the URL carries
+// `?ticket=...` (the auto-draft hand-off from IssueSubmission), route
+// straight into the editor instead so the flow stays seamless.
+const BrdIndexOrEditor = () => {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get('ticket')) return <BrdEditor />;
+  return <BrdList />;
+};
 
 import '@/App.css';
 
@@ -70,7 +80,7 @@ function App() {
               <Route path="/validate" element={<ValidationScreen />} />
               <Route path="/coe-workbench" element={<CoeWorkbench />} />
               <Route path="/poc-tasks" element={<PocTaskView />} />
-              <Route path="/brd" element={<BrdEditor />} />
+              <Route path="/brd" element={<BrdIndexOrEditor />} />
               <Route path="/brd/:id" element={<BrdEditor />} />
               <Route path="/sla-monitor" element={<SlaMonitor />} />
               <Route path="/leadership" element={<LeadershipDashboard />} />
