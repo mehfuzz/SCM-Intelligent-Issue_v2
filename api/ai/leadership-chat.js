@@ -1,10 +1,9 @@
-// POST /api/ai/leadership-chat
-//   { session_id?, message }    → { session_id, reply, toolTrace[], provider, model }
+// Leadership chat API — merged with chat-sessions to stay under Vercel
+// Hobby's 12-function cap.
 //
-// If session_id is omitted, a new chat_sessions row is created and its id
-// returned. Conversation history is reloaded from chat_messages so the
-// model sees the full thread on every turn. Tool calls + results are
-// persisted alongside assistant turns for full replayability.
+//   GET  /api/ai/leadership-chat                       → list this user's sessions
+//   GET  /api/ai/leadership-chat?session_id=<uuid>     → messages for that session
+//   POST /api/ai/leadership-chat                       → { session_id?, message } → reply
 
 import { supabase, isConfigured } from '../_lib/supabase.js';
 import { handleOptions, json, readBody, requireUser } from '../_lib/http.js';
@@ -33,9 +32,29 @@ const loadHistory = async (sessionId) => {
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
-  if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
   if (!isConfigured()) return json(res, 500, { error: 'Supabase env vars not configured' });
 
+  // --- GET: sessions list or one session's messages ---
+  if (req.method === 'GET') {
+    const actor = requireUser(req);
+    const { session_id } = req.query;
+    if (session_id) {
+      const { data, error } = await supabase()
+        .from('chat_messages').select('*')
+        .eq('session_id', session_id).order('at', { ascending: true });
+      if (error) return json(res, 500, { error: error.message });
+      return json(res, 200, data || []);
+    }
+    let q = supabase().from('chat_sessions').select('*').order('updated_at', { ascending: false }).limit(50);
+    if (actor.id) q = q.eq('user_id', actor.id);
+    const { data, error } = await q;
+    if (error) return json(res, 500, { error: error.message });
+    return json(res, 200, data || []);
+  }
+
+  if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
+
+  // --- POST: chat turn ---
   const actor = requireUser(req);
   let body;
   try { body = await readBody(req); }
@@ -43,7 +62,6 @@ export default async function handler(req, res) {
   const userText = String(body?.message || '').trim();
   if (!userText) return json(res, 400, { error: 'message required' });
 
-  // Ensure / create session.
   let sessionId = body?.session_id || null;
   if (!sessionId) {
     const { data, error } = await supabase().from('chat_sessions').insert({
@@ -54,21 +72,15 @@ export default async function handler(req, res) {
     sessionId = data.id;
   }
 
-  // Persist the user turn FIRST so it's visible even if the model fails.
   await supabase().from('chat_messages').insert({
     session_id: sessionId, role: 'user', content: userText,
   });
 
-  // Load full history (system prompt is injected fresh each turn).
   let history;
   try { history = await loadHistory(sessionId); }
   catch (e) { return json(res, 500, { error: e.message }); }
-  const messages = [
-    { role: 'system', content: CHAT_SYSTEM_PROMPT },
-    ...history,
-  ];
+  const messages = [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...history];
 
-  // Run the tool-loop.
   let out;
   try { out = await chatComplete({ messages }); }
   catch (e) {
@@ -78,7 +90,6 @@ export default async function handler(req, res) {
     return json(res, 500, { session_id: sessionId, error: e?.message || String(e) });
   }
 
-  // Persist tool trace rows + final assistant turn.
   for (const t of out.toolTrace) {
     await supabase().from('chat_messages').insert({
       session_id: sessionId,

@@ -2,8 +2,11 @@
   "buildCommand": "npm install && cd frontend && npm install --legacy-peer-deps && DISABLE_ESLINT_PLUGIN=true CI=false GENERATE_SOURCEMAP=false npm run build",
   "outputDirectory": "frontend/build",
   "rewrites": [
+    { "source": "/api/auth/login",        "destination": "/api/users" },
     { "source": "/api/insights/feedback", "destination": "/api/insights" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/api/cron/insights",     "destination": "/api/insights?cron=1" },
+    { "source": "/api/chat-sessions",     "destination": "/api/ai/leadership-chat" },
+    { "source": "/((?!api/).*)",          "destination": "/index.html" }
   ],
   "headers": [
     {
@@ -14,6 +17,6 @@
     }
   ],
   "crons": [
-    { "path": "/api/cron/insights", "schedule": "0 2 * * *" }
+    { "path": "/api/insights?cron=1", "schedule": "0 2 * * *" }
   ]
 }

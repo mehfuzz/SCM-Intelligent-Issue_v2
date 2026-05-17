@@ -39,7 +39,9 @@ export const api = {
   health: () => request('/health'),
 
   // Auth
-  login: (email, password) => request('/auth/login', {
+  // Login is the only POST to /api/users — the handler discriminates by
+  // whether the body has { email, password } or not.
+  login: (email, password) => request('/users', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   }),
@@ -103,12 +105,14 @@ export const api = {
 
   // Insights (Feature 1)
   listInsights:        ()           => request('/insights'),
-  refreshInsights:     ()           => request('/ai/generate-insights', { method: 'POST', body: '{}' }),
-  postInsightFeedback: (payload)    => request('/insights/feedback', { method: 'POST', body: JSON.stringify(payload) }),
+  refreshInsights:     ()           => request('/insights', { method: 'POST', body: JSON.stringify({ action: 'refresh' }) }),
+  postInsightFeedback: (payload)    => request('/insights', { method: 'POST', body: JSON.stringify(payload) }),
 
-  // Leadership chat (Feature 2)
-  chatSessions:        ()           => request('/chat-sessions'),
-  chatMessages:        (sessionId)  => request(`/chat-sessions?id=${encodeURIComponent(sessionId)}`),
+  // Leadership chat (Feature 2). Sessions list + messages now live on the
+  // same endpoint as the chat POST to keep us under Vercel Hobby's
+  // function-count cap.
+  chatSessions:        ()           => request('/ai/leadership-chat'),
+  chatMessages:        (sessionId)  => request(`/ai/leadership-chat?session_id=${encodeURIComponent(sessionId)}`),
   chat:                ({ session_id, message }) => request('/ai/leadership-chat', {
     method: 'POST',
     body: JSON.stringify({ session_id, message }),
