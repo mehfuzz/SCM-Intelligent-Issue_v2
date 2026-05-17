@@ -50,6 +50,9 @@ export default function IssueSubmission() {
     hasWorkaround: 'No',
     workaroundText: '',
     attachments: [],
+    // Submitter can opt into having the BRD editor auto-generate a draft
+    // on the way out — saves them clicking through to the editor manually.
+    generateBrdAfterSubmit: true,
   });
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -126,13 +129,23 @@ export default function IssueSubmission() {
       return fakeId;
     };
 
+    // Routes to /brd?ticket=ID&autoGenerate=1 when the submitter asked us to
+    // pre-draft a BRD; otherwise back to the dashboard.
+    const routeAfter = (ticketId) => {
+      if (form.generateBrdAfterSubmit && ticketId) {
+        navigate(`/brd?ticket=${encodeURIComponent(ticketId)}&autoGenerate=1`);
+      } else {
+        navigate('/dashboard');
+      }
+    };
+
     if (!isLiveApi()) {
       const id = localFallback();
       toast.warning(`Demo mode: ${id} saved locally only — connect Supabase to persist.`);
       const created = MOCK_TICKETS.find((t) => t.id === id);
       if (created) notify.ticketSubmitted(created);
       setSubmitting(false);
-      navigate('/dashboard');
+      routeAfter(id);
       return;
     }
 
@@ -141,12 +154,12 @@ export default function IssueSubmission() {
       toast.success(`Issue submitted — Ticket ID ${created.id}`);
       MOCK_TICKETS.unshift(created);
       notify.ticketSubmitted(created);
-      navigate('/dashboard');
+      routeAfter(created.id);
     } catch (e) {
       console.warn('[submit] API failed', e);
       const id = localFallback();
       toast.error(`Save failed (${e?.message || 'API error'}); kept locally as ${id}.`);
-      navigate('/dashboard');
+      routeAfter(id);
     } finally {
       setSubmitting(false);
     }
@@ -424,11 +437,40 @@ export default function IssueSubmission() {
                   <div className="text-xs">
                     <div className="font-semibold text-gray-900">After submission</div>
                     <div className="text-gray-600 mt-0.5">
-                      AI will scan for duplicates, score impact, draft a BRD and route to the COE workbench.
+                      AI will scan for duplicates, score impact and route to the COE workbench.
                     </div>
                   </div>
                 </CardContent>
               </Card>
+
+              {/* AI BRD pre-draft opt-in */}
+              <label
+                htmlFor="generate-brd-after-submit"
+                className={`flex items-start gap-3 rounded-md border p-4 cursor-pointer transition ${
+                  form.generateBrdAfterSubmit
+                    ? 'border-red-300 bg-red-50/50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  id="generate-brd-after-submit"
+                  data-testid="form-generate-brd-toggle"
+                  type="checkbox"
+                  checked={form.generateBrdAfterSubmit}
+                  onChange={(e) => set('generateBrdAfterSubmit', e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-red-600"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-gray-900">
+                    Generate a draft BRD now (recommended)
+                  </div>
+                  <div className="text-xs text-gray-600 mt-0.5">
+                    On submit, we'll auto-route you to the BRD editor and have AI fill the six sections
+                    using everything you typed above. You can review, edit, and save before the POC owner
+                    sees it. Skip this to land on the dashboard instead.
+                  </div>
+                </div>
+              </label>
             </div>
           )}
 

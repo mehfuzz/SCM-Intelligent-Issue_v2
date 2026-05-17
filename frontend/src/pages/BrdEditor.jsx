@@ -1,5 +1,5 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { notify } from '../lib/notify';
@@ -73,6 +73,8 @@ export default function BrdEditor() {
   const [generating, setGenerating] = useState(false);
   const [aiMeta, setAiMeta] = useState(null); // { provider, model, fallbackUsed, at }
   const [aiError, setAiError] = useState(null);
+  // Guards against re-firing the auto-generation on hot reloads / re-renders.
+  const autoFiredRef = useRef(false);
 
   const canEdit = user && (
     user.role === ROLES.POC_OWNER ||
@@ -144,6 +146,22 @@ export default function BrdEditor() {
       setGenerating(false);
     }
   };
+
+  // If the route is /brd?ticket=X&autoGenerate=1 — typically arriving here
+  // straight from the Issue Submission form — fire the generator once on
+  // mount so the submitter lands on a populated draft, not an empty one.
+  useEffect(() => {
+    if (autoFiredRef.current) return;
+    if (searchParams.get('autoGenerate') !== '1') return;
+    if (!brd?.ticketId) return;
+    if (generating) return;
+    autoFiredRef.current = true;
+    // Small delay so the page paints first; gives the operator visual
+    // feedback that something is happening rather than a blank flash.
+    const t = setTimeout(() => { onGenerateDraft(); }, 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brd?.ticketId, searchParams]);
 
   const onSaveDraft = () => {
     const newV = bumpVersion(brd.version);
