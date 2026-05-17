@@ -10,6 +10,42 @@
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL_PRIMARY = process.env.GROQ_PRIMARY_MODEL || 'llama-3.3-70b-versatile';
 
+// Generic chat completion that accepts a full messages array and optional
+// tool schemas. Used by:
+//   * generate-insights (no tools, JSON mode)
+//   * leadership-chat   (tools, no JSON mode — model decides)
+// Returns the raw OpenAI-shaped response so the caller can inspect tool calls.
+export const chat = async ({ messages, tools, signal, model = MODEL_PRIMARY, jsonMode = false, temperature = 0.4, maxTokens = 2048 }) => {
+  if (!isConfigured()) {
+    throw new ProviderError('GROQ_API_KEY not set', { retryable: true });
+  }
+  const body = { model, messages, temperature, max_tokens: maxTokens };
+  if (jsonMode) body.response_format = { type: 'json_object' };
+  if (Array.isArray(tools) && tools.length) {
+    body.tools = tools;
+    body.tool_choice = 'auto';
+  }
+
+  let res;
+  try {
+    res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (e) {
+    throw new ProviderError(`Groq network error: ${e?.message || e}`, { retryable: true });
+  }
+  if (res.status === 429) throw new ProviderError('Groq rate-limit / quota exceeded', { retryable: true, status: 429 });
+  if (res.status >= 500)  throw new ProviderError(`Groq server error ${res.status}`, { retryable: true, status: res.status });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new ProviderError(`Groq ${res.status}: ${text || res.statusText}`, { retryable: false, status: res.status });
+  }
+  return await res.json();
+};
+
 export class ProviderError extends Error {
   constructor(message, { retryable = false, status = 0 } = {}) {
     super(message);

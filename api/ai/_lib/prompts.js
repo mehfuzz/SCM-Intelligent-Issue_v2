@@ -1,10 +1,14 @@
-// BRD generation prompt + JSON schema, shared by every provider adapter.
+// Prompts shared by every AI feature:
+//   * BRD generator       (BRD_*  / userPromptFor)
+//   * Insights generator  (INSIGHTS_*)
+//   * Leadership chatbot  (CHAT_SYSTEM_PROMPT)
 //
-// The system prompt is intentionally explicit about style — short paragraphs,
-// numbered FRs, ₹ for INR, no marketing language. The schema is the SAME
-// six section keys the BrdEditor renders, so the frontend can drop the
-// response straight into its textareas with zero post-processing.
+// The system prompts are intentionally explicit about output shape because
+// free-tier models (Llama 3.x at 70B) need anchors to stay schema-conformant.
 
+// ───────────────────────────────────────────────────────────────────────────
+// 1) BRD GENERATOR
+// ───────────────────────────────────────────────────────────────────────────
 export const BRD_SECTION_KEYS = [
   'Background',
   'Objective',
@@ -65,8 +69,6 @@ Example of the exact output shape (use this shape, write fresh content for the a
   "Risks & Dependencies": "• Dependency: validator pool config maintained by SCM CoE — owner: COE Admin.\\n• Risk: validator availability during quarter-end peak — mitigation: define backup validators in routing rules."
 }`;
 
-// Build the user-side payload for the LLM. The structure is deliberately
-// kept consistent across providers so prompt-cache hit rates stay stable.
 export const userPromptFor = (ticket) => {
   const i = ticket?.impact || {};
   return [
@@ -96,3 +98,75 @@ export const userPromptFor = (ticket) => {
     'Draft the BRD now as the JSON object specified.',
   ].join('\n');
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// 2) INSIGHTS GENERATOR (Feature 1)
+// ───────────────────────────────────────────────────────────────────────────
+export const INSIGHT_CATEGORIES = ['hotspot', 'cost', 'bottleneck', 'quality', 'load', 'forecast'];
+
+export const INSIGHTS_SYSTEM_PROMPT = `You are an SCM operations analyst for Airtel's Center of Excellence.
+
+You will receive a JSON metric bundle aggregated from the issue tracker. Your job: produce 5–8 ACTIONABLE insights that help leadership decide where to invest, automate, or escalate.
+
+Output STRICTLY as a JSON object with this exact shape — no prose outside it, no markdown code fences:
+
+{
+  "insights": [
+    {
+      "category": "hotspot|cost|bottleneck|quality|load|forecast",
+      "title": "short imperative — under 10 words",
+      "body": "2–4 sentences. Cite specific numbers and percentages from the input.",
+      "supporting_numbers": [{"label":"breach_rate","value":"66%"}, ...],
+      "root_cause": "one sentence on the likely root cause",
+      "recommended_action": "single concrete action with owner",
+      "projected_impact_inr": 1800000,
+      "cited_ticket_ids": ["SCM-PO-004", ...],
+      "impact_score": 85
+    },
+    ...
+  ]
+}
+
+Hard rules:
+  * Cite at least one specific ticket ID in cited_ticket_ids when one is implied by the data.
+  * Use ₹ in body text. projected_impact_inr is a plain number (no currency symbol).
+  * impact_score: integer 1–100. Higher = more urgent / valuable.
+  * No marketing language. Precise and operational.
+  * If the bundle is too sparse to find 5 insights, return fewer — never invent.
+  * If "previously_rejected" patterns are listed in the input, do NOT repeat them.
+  * Output ONLY the JSON object.`;
+
+export const insightsUserPrompt = (bundle, previouslyRejected = []) => {
+  const rejBlock = previouslyRejected.length
+    ? `\n\nPreviously rejected insight patterns (do NOT repeat these themes):\n${previouslyRejected.map((p) => `- ${p}`).join('\n')}`
+    : '';
+  return `SCM ticket-tracker metric bundle (JSON):
+${JSON.stringify(bundle, null, 2)}${rejBlock}
+
+Now produce the JSON object with the insights array.`;
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// 3) LEADERSHIP CHAT (Feature 2)
+// ───────────────────────────────────────────────────────────────────────────
+export const CHAT_SYSTEM_PROMPT = `You are an analyst for Airtel's SCM Center of Excellence, answering questions from leadership.
+
+You have access to TOOLS for querying the ticket database. When a question needs data, you MUST use a tool — never invent numbers. After receiving a tool result, write a short, plain-English answer grounded in the result.
+
+Available tools:
+  * query_tickets   — fetch up to 50 tickets matching filters.
+  * aggregate       — group counts/sums/avg-days-open by one field.
+  * top_n           — get the top N tickets ranked by a metric.
+  * compare_periods — diff a metric between two time windows.
+  * forecast        — simple submission-volume forecast per module.
+  * chart           — return a Recharts spec the UI will render inline.
+
+Output rules:
+  * Use ₹ for INR amounts.
+  * Cite ticket IDs in plain text when relevant — the UI will turn them into links.
+  * If a query is too vague, ask one clarifying question instead of guessing.
+  * Keep answers short: 2–5 sentences plus an optional chart.
+  * Never speculate beyond the data. If the answer needs data you weren't given, say "I don't have that information in the ticket tracker."
+  * Do NOT propose any state-changing actions yourself — you are read-only.
+
+When the user asks for a "report" or "monthly digest", structure the response as Markdown with sections: Executive Summary, KPIs, Wins, Concerns, Recommendations. Embed charts where useful.`;

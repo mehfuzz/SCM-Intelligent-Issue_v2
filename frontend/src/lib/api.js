@@ -96,12 +96,22 @@ export const api = {
   // AI
   // ──────────────────────────────────────────────────────────────────────
   // POST /api/ai/generate-brd
-  // Body { ticketId, ticket? } → { sections, meta:{provider,model,fallbackUsed,at,actor} }
-  // ticket is passed inline in demo mode so the endpoint can draft without
-  // needing Supabase access.
   generateBrd: (ticketId, ticket) => request('/ai/generate-brd', {
     method: 'POST',
     body: JSON.stringify({ ticketId, ticket }),
+  }),
+
+  // Insights (Feature 1)
+  listInsights:        ()           => request('/insights'),
+  refreshInsights:     ()           => request('/ai/generate-insights', { method: 'POST', body: '{}' }),
+  postInsightFeedback: (payload)    => request('/insights/feedback', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // Leadership chat (Feature 2)
+  chatSessions:        ()           => request('/chat-sessions'),
+  chatMessages:        (sessionId)  => request(`/chat-sessions?id=${encodeURIComponent(sessionId)}`),
+  chat:                ({ session_id, message }) => request('/ai/leadership-chat', {
+    method: 'POST',
+    body: JSON.stringify({ session_id, message }),
   }),
 };
 

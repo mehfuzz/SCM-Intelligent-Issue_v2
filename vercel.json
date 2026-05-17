@@ -2,6 +2,7 @@
   "buildCommand": "npm install && cd frontend && npm install --legacy-peer-deps && DISABLE_ESLINT_PLUGIN=true CI=false GENERATE_SOURCEMAP=false npm run build",
   "outputDirectory": "frontend/build",
   "rewrites": [
+    { "source": "/api/insights/feedback", "destination": "/api/insights" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "headers": [
@@ -11,5 +12,8 @@
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
     }
+  ],
+  "crons": [
+    { "path": "/api/cron/insights", "schedule": "0 2 * * *" }
   ]
 }

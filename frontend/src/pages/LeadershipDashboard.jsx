@@ -8,6 +8,8 @@ import { KpiCard } from '../components/shared/KpiCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+import InsightsPanel from '../components/leadership/InsightsPanel';
+import Chat from '../components/leadership/Chat';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../components/ui/dialog';
@@ -19,7 +21,7 @@ import {
 } from 'recharts';
 import {
   TrendingUp, IndianRupee, ShieldCheck, Inbox, Download, Table2,
-  LayoutGrid, AlertTriangle, Users2,
+  LayoutGrid, AlertTriangle, Users2, Sparkles, MessageSquare,
 } from 'lucide-react';
 
 const COLORS = ['#E40000', '#374151', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
@@ -173,9 +175,11 @@ export default function LeadershipDashboard() {
 
       <Tabs defaultValue="overview">
         <TabsList>
-          <TabsTrigger value="overview" data-testid="lead-tab-overview"><LayoutGrid className="h-3.5 w-3.5 mr-1.5" /> Overview</TabsTrigger>
-          <TabsTrigger value="poc"       data-testid="lead-tab-poc"><Users2 className="h-3.5 w-3.5 mr-1.5" /> Per-POC report</TabsTrigger>
-          <TabsTrigger value="log"       data-testid="lead-tab-log"><Table2 className="h-3.5 w-3.5 mr-1.5" /> Issue log (Excel)</TabsTrigger>
+          <TabsTrigger value="overview"  data-testid="lead-tab-overview"><LayoutGrid     className="h-3.5 w-3.5 mr-1.5" /> Overview</TabsTrigger>
+          <TabsTrigger value="insights"  data-testid="lead-tab-insights"><Sparkles       className="h-3.5 w-3.5 mr-1.5" /> AI Insights</TabsTrigger>
+          <TabsTrigger value="chat"      data-testid="lead-tab-chat"><MessageSquare className="h-3.5 w-3.5 mr-1.5" /> Ask AI</TabsTrigger>
+          <TabsTrigger value="poc"       data-testid="lead-tab-poc"><Users2          className="h-3.5 w-3.5 mr-1.5" /> Per-POC report</TabsTrigger>
+          <TabsTrigger value="log"       data-testid="lead-tab-log"><Table2          className="h-3.5 w-3.5 mr-1.5" /> Issue log (Excel)</TabsTrigger>
         </TabsList>
 
         {/* OVERVIEW */}
@@ -375,6 +379,16 @@ export default function LeadershipDashboard() {
               Double-click any KPI tile or chart bar to drill into the underlying tickets.
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* AI INSIGHTS */}
+        <TabsContent value="insights" className="mt-4">
+          <InsightsPanel />
+        </TabsContent>
+
+        {/* AI CHAT */}
+        <TabsContent value="chat" className="mt-4">
+          <Chat />
         </TabsContent>
 
         {/* PER-POC REPORT */}
