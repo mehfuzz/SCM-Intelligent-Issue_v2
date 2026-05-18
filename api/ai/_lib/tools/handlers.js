@@ -35,6 +35,16 @@ export const TOOL_HANDLERS = {
   top_n:            (args) => safe(metrics.topTickets,        normalize('top_n', args)),
   compare_periods:  (args) => safe(metrics.comparePeriods,    args),
   forecast:         (args) => safe(metrics.submissionForecast, normalize('forecast', args)),
+  poc_performance:  async (args) => {
+    try {
+      const rows = await metrics.pocPerformance();
+      // Apply optional filter post-hoc since pocPerformance() works off
+      // the full ticket set. The model uses this primarily for ranking,
+      // so we just include the filters in the response for context.
+      return { rows, filters: args?.filters || null };
+    } catch (e) { return { error: e?.message || String(e) }; }
+  },
+  module_performance: async () => safe(metrics.modulePerformance, undefined),
   chart: async (args = {}) => {
     const data = Array.isArray(args.data) ? args.data.slice(0, 50) : [];
     return {

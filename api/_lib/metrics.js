@@ -108,7 +108,7 @@ export const pocPerformance = async () => {
 
 // Counts grouped by an arbitrary field (used by chat aggregate tool).
 export const aggregate = async ({ group_by, metric = 'count', filters = {}, time_range } = {}) => {
-  const valid = new Set(['module', 'function', 'priority', 'status', 'category', 'compliance_risk']);
+  const valid = new Set(['module', 'function', 'priority', 'status', 'category', 'compliance_risk', 'assigned_to']);
   if (!valid.has(group_by)) throw new Error(`group_by must be one of: ${[...valid].join(', ')}`);
 
   let q = supabase().from('tickets').select('*');

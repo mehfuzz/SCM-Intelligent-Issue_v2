@@ -45,7 +45,7 @@ export const TOOL_SCHEMAS = [
         type: 'object',
         required: ['group_by'],
         properties: {
-          group_by: { type: 'string', enum: ['module','function','priority','status','category','compliance_risk'] },
+          group_by: { type: 'string', enum: ['module','function','priority','status','category','compliance_risk','assigned_to'] },
           metric:   { type: 'string', enum: ['count','sum_savings','avg_days_open'] },
           filters: {
             type: 'object',
@@ -65,6 +65,37 @@ export const TOOL_SCHEMAS = [
           },
         },
       },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'poc_performance',
+      description:
+        'Per-POC-owner performance snapshot: total assigned, open, breached, reopened, average days-to-close. Use for "which POC closes P0s fast", "who is overloaded", etc.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filters: {
+            type: 'object',
+            description: 'Optional filters applied to the underlying ticket set before computing per-POC stats.',
+            properties: {
+              priority: { type: 'string', enum: ['P0','P1','P2','P3'] },
+              status:   { type: 'string' },
+              module:   { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'module_performance',
+      description:
+        'Per-module performance snapshot: ticket totals, open/closed/breach counts, reopen counts, average days-to-close, realised vs unrealised ₹ savings. Use for "which module is the biggest hotspot", "where is money sitting on the table", etc.',
+      parameters: { type: 'object', properties: {} },
     },
   },
   {
