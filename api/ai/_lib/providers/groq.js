@@ -41,7 +41,13 @@ export const chat = async ({ messages, tools, signal, model = MODEL_PRIMARY, jso
   if (res.status >= 500)  throw new ProviderError(`Groq server error ${res.status}`, { retryable: true, status: res.status });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new ProviderError(`Groq ${res.status}: ${text || res.statusText}`, { retryable: false, status: res.status });
+    // tool_use_failed is a 400 whose root cause is the *model's* output,
+    // not our request. Treat as retryable so the orchestrator can fall
+    // through to Gemini or a second attempt.
+    const retryable = /tool_use_failed|tool call validation/i.test(text || '');
+    throw new ProviderError(`Groq ${res.status}: ${text || res.statusText}`, {
+      retryable, status: res.status,
+    });
   }
   return await res.json();
 };
@@ -96,8 +102,9 @@ export const generate = async ({ systemPrompt, userPrompt, signal, model = MODEL
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    const retryable = /tool_use_failed|tool call validation/i.test(text || '');
     throw new ProviderError(`Groq ${res.status}: ${text || res.statusText}`, {
-      retryable: false,
+      retryable,
       status: res.status,
     });
   }

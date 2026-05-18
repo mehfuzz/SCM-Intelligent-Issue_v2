@@ -70,20 +70,42 @@ const runLoop = async (provider, providerName, conversation) => {
   };
 };
 
+const TOOL_RETRY_HINT = {
+  role: 'system',
+  content:
+    'IMPORTANT: when calling tools, all numeric parameters (n, weeks, limit) MUST be encoded as JSON numbers, not strings. ' +
+    'Send `"n": 5`, never `"n": "5"`. The previous tool call was rejected because of a string-vs-number type mismatch.',
+};
+
 export const chatComplete = async ({ messages }) => {
   const attempts = [];
+
   if (groq.isConfigured()) {
     try { return await runLoop(groq, 'groq', messages); }
-    catch (e) { attempts.push({ provider: 'groq', message: e.message, retryable: !!e.retryable }); }
+    catch (e) {
+      attempts.push({ provider: 'groq', message: e.message, retryable: !!e.retryable });
+      // tool_use_failed → one-shot retry with a stronger type hint. Groq's
+      // free tier is far more abundant than Gemini's; the temperature
+      // jitter alone usually fixes a string-vs-number slip.
+      if (/tool_use_failed|tool call validation/i.test(e.message || '')) {
+        try {
+          return await runLoop(groq, 'groq', [TOOL_RETRY_HINT, ...messages]);
+        } catch (e2) {
+          attempts.push({ provider: 'groq', message: `retry: ${e2.message}`, retryable: !!e2.retryable });
+        }
+      }
+    }
   } else {
     attempts.push({ provider: 'groq', message: 'GROQ_API_KEY not set', retryable: true });
   }
+
   if (gemini.isConfigured()) {
     try { return await runLoop(gemini, 'gemini', messages); }
     catch (e) { attempts.push({ provider: 'gemini', message: e.message, retryable: !!e.retryable }); }
   } else {
     attempts.push({ provider: 'gemini', message: 'GEMINI_API_KEY not set', retryable: true });
   }
+
   const err = new Error('All AI providers failed');
   err.code = 'AI_ALL_PROVIDERS_FAILED';
   err.attempts = attempts;

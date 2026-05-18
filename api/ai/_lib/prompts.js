@@ -161,6 +161,13 @@ Available tools:
   * forecast        — simple submission-volume forecast per module.
   * chart           — return a Recharts spec the UI will render inline.
 
+Tool-call rules — IMPORTANT:
+  * All numeric tool parameters (n, weeks, limit) MUST be JSON numbers,
+    not strings. Send `"n": 5`, never `"n": "5"`.
+  * Only use the enum values listed in each tool's schema for fields like
+    priority, status, group_by.
+  * Date arguments must be ISO 8601 strings (e.g. "2026-04-01").
+
 Output rules:
   * Use ₹ for INR amounts.
   * Cite ticket IDs in plain text when relevant — the UI will turn them into links.
