@@ -4,28 +4,31 @@ import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Card } from '../components/ui/card';
-import { MOCK_USERS } from '../data/mockData';
 import { toast } from 'sonner';
-import { ShieldCheck, ArrowRight } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 const LOGIN_BG = 'https://static.prod-images.emergentagent.com/jobs/fc2ba3c5-0b5b-4b11-b411-7769291a5640/images/1707e71cf21817423ce661c8d133bd790e79b96f0b7fc9703735548cc12a67db.png';
 
 export default function Login() {
-  const { user, login, loginAs } = useAuth();
+  const { user, login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('ravi.kumar@airtel.in');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw]     = useState(false);
+  const [loading, setLoading]   = useState(false);
 
   if (user) return <Navigate to="/dashboard" replace />;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const res = await login({ email, password });
+    setLoading(true);
+    const res = await login({ email: email.trim(), password });
+    setLoading(false);
     if (!res.ok) {
       toast.error(res.error || 'Login failed');
       return;
     }
+    // If mustChangePassword, SetPasswordModal will appear automatically.
     toast.success(`Welcome, ${res.user.name}`);
     navigate('/dashboard');
   };
@@ -87,7 +90,9 @@ export default function Login() {
           </div>
 
           <h2 className="font-display text-3xl font-bold text-gray-900">Sign in</h2>
-          <p className="mt-1 text-sm text-gray-500">Use your Airtel SSO email and demo password.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            Enter your Airtel email and password. Contact your System Admin if you need access.
+          </p>
 
           <form onSubmit={handleSubmit} className="mt-7 space-y-4">
             <div>
@@ -101,49 +106,41 @@ export default function Login() {
                 placeholder="firstname.lastname@airtel.in"
                 className="mt-1 h-11 focus-visible:ring-red-500"
                 required
+                autoFocus
               />
             </div>
             <div>
               <Label htmlFor="password" className="text-xs font-semibold text-gray-700">Password</Label>
-              <Input
-                id="password"
-                data-testid="login-password-input"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="mt-1 h-11 focus-visible:ring-red-500"
-                required
-              />
+              <div className="relative mt-1">
+                <Input
+                  id="password"
+                  data-testid="login-password-input"
+                  type={showPw ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="h-11 pr-10 focus-visible:ring-red-500"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  tabIndex={-1}
+                >
+                  {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <Button
               type="submit"
               data-testid="login-submit-btn"
               className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-semibold"
+              disabled={loading}
             >
-              Sign in <ArrowRight className="ml-2 h-4 w-4" />
+              {loading ? 'Signing in…' : <span className="flex items-center justify-center gap-2">Sign in <ArrowRight className="h-4 w-4" /></span>}
             </Button>
           </form>
-
-          <div className="my-6 flex items-center gap-3 text-xs text-gray-400">
-            <div className="h-px flex-1 bg-gray-200" />
-            DEMO — sign in as
-            <div className="h-px flex-1 bg-gray-200" />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {MOCK_USERS.map((u) => (
-              <Card
-                key={u.id}
-                data-testid={`demo-user-${u.role.replace(/\s+/g, '-').toLowerCase()}`}
-                onClick={() => { loginAs(u.id); navigate('/dashboard'); }}
-                className="cursor-pointer border-gray-200 hover:border-red-300 hover:bg-red-50/40 transition p-3"
-              >
-                <div className="text-sm font-semibold text-gray-900">{u.name}</div>
-                <div className="text-[11px] text-gray-500">{u.role}</div>
-              </Card>
-            ))}
-          </div>
         </div>
       </div>
     </div>

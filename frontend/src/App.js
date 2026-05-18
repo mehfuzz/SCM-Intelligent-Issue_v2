@@ -9,6 +9,7 @@ import { hydrateFromApi } from './lib/hydrate';
 import { ROLES } from './data/mockData';
 
 import Login from './pages/Login';
+import { SetPasswordModal } from './components/SetPasswordModal';
 import HomeDashboard from './pages/HomeDashboard';
 import IssueSubmission from './pages/IssueSubmission';
 import TicketDetails from './pages/TicketDetails';
@@ -125,6 +126,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        <SetPasswordModal />
         <Toaster richColors position="top-right" />
       </AuthProvider>
     </div>

@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { MOCK_USERS } from '../data/mockData';
 import { api } from '../lib/api';
 
 const AuthContext = createContext(null);
@@ -21,38 +20,25 @@ export const AuthProvider = ({ children }) => {
     else localStorage.removeItem(STORAGE_KEY);
   }, [user]);
 
-  // Try the backend first; fall back to in-bundle MOCK_USERS if the API is
-  // unavailable (no Supabase, offline preview, etc.).
   const login = async ({ email, password }) => {
     try {
       const { user: u } = await api.login(email, password);
-      const safe = { ...u };
-      delete safe.password;
-      setUser(safe);
-      return { ok: true, user: safe };
+      setUser(u);
+      return { ok: true, user: u };
     } catch (e) {
-      const found = MOCK_USERS.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-      );
-      if (!found) return { ok: false, error: 'Invalid email or password' };
-      const { password: _pw, ...safe } = found;
-      setUser(safe);
-      return { ok: true, user: safe };
+      return { ok: false, error: e?.message?.replace(/^API \d+: /, '') || 'Login failed' };
     }
   };
 
-  const loginAs = (userId) => {
-    const found = MOCK_USERS.find((u) => u.id === userId);
-    if (!found) return { ok: false };
-    const { password: _pw, ...safe } = found;
-    setUser(safe);
-    return { ok: true, user: safe };
+  // After forced password change succeeds, clear the flag in-memory + localStorage.
+  const clearMustChangePassword = () => {
+    setUser((prev) => prev ? { ...prev, mustChangePassword: false } : prev);
   };
 
   const logout = () => setUser(null);
 
   return (
-    <AuthContext.Provider value={{ user, login, loginAs, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, clearMustChangePassword }}>
       {children}
     </AuthContext.Provider>
   );

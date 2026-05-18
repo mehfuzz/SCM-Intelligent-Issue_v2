@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '../components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Button } from '../components/ui/button';
@@ -15,23 +15,39 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../components/ui/select';
 import {
-  MOCK_USERS, MODULES as INITIAL_MODULES, FUNCTIONS as INITIAL_FUNCTIONS,
+  MODULES as INITIAL_MODULES, FUNCTIONS as INITIAL_FUNCTIONS,
   CATEGORIES as INITIAL_CATEGORIES, STATUSES, IN_PROGRESS_SUBSTAGES_DEFAULT, ROLES,
 } from '../data/mockData';
+import { api } from '../lib/api';
 import { toast } from 'sonner';
-import { Plus, Trash2, Save, Settings, X } from 'lucide-react';
+import { Plus, Trash2, Save, Settings, X, Copy, UserCheck, UserX } from 'lucide-react';
 
-// Editable taxonomy lives in component state. Admins can add / remove items
-// and the changes persist for the session. (Backed by /api in a follow-up.)
 export default function AdminConsole() {
   const [categories, setCategories] = useState([...INITIAL_CATEGORIES]);
   const [modules, setModules]       = useState([...INITIAL_MODULES]);
   const [functions, setFunctions]   = useState([...INITIAL_FUNCTIONS]);
   const [substages, setSubstages]   = useState([...IN_PROGRESS_SUBSTAGES_DEFAULT]);
-  const [users, setUsers]           = useState([...MOCK_USERS]);
 
-  // --- generic add/remove helpers driven by a tiny "add" prompt ---
-  const [addPrompt, setAddPrompt] = useState(null); // { title, onSave }
+  // Users — loaded from API
+  const [users, setUsers]           = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  const loadUsers = useCallback(async () => {
+    setUsersLoading(true);
+    try {
+      const data = await api.listUsers();
+      setUsers(data || []);
+    } catch {
+      toast.error('Could not load users from server');
+    } finally {
+      setUsersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  // --- generic add/remove helpers ---
+  const [addPrompt, setAddPrompt] = useState(null);
   const [addValue, setAddValue]   = useState('');
 
   const openAdd = (title, onSave) => { setAddPrompt({ title, onSave }); setAddValue(''); };
@@ -44,16 +60,48 @@ export default function AdminConsole() {
   };
 
   // --- Add User dialog ---
-  const [showAddUser, setShowAddUser] = useState(false);
-  const [newUser, setNewUser] = useState({ name: '', email: '', role: ROLES.SUBMITTER, department: '' });
-  const submitNewUser = () => {
+  const [showAddUser, setShowAddUser]   = useState(false);
+  const [newUser, setNewUser]           = useState({ name: '', email: '', role: ROLES.SUBMITTER, department: '' });
+  const [addingUser, setAddingUser]     = useState(false);
+
+  // --- Temp password reveal dialog ---
+  const [tempPwInfo, setTempPwInfo]     = useState(null); // { name, email, tempPassword }
+
+  const submitNewUser = async () => {
     if (!newUser.name.trim() || !newUser.email.trim()) { toast.error('Name and email are required'); return; }
-    const id = `u${users.length + 1}`;
-    const initials = newUser.name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase() || 'U';
-    setUsers((prev) => [...prev, { ...newUser, id, password: 'demo123', avatarInitials: initials }]);
-    toast.success(`${newUser.name} added as ${newUser.role}`);
-    setShowAddUser(false);
-    setNewUser({ name: '', email: '', role: ROLES.SUBMITTER, department: '' });
+    setAddingUser(true);
+    try {
+      const { user: created, tempPassword } = await api.createUser(newUser);
+      setUsers((prev) => [...prev, created]);
+      setTempPwInfo({ name: created.name, email: created.email, tempPassword });
+      toast.success(`${created.name} added as ${created.role}`);
+      setShowAddUser(false);
+      setNewUser({ name: '', email: '', role: ROLES.SUBMITTER, department: '' });
+    } catch (e) {
+      toast.error(e?.message?.replace(/^API \d+: /, '') || 'Failed to add user');
+    } finally {
+      setAddingUser(false);
+    }
+  };
+
+  const handleDeactivate = async (u) => {
+    try {
+      await api.deactivateUser(u.id);
+      setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, isActive: false } : x));
+      toast.success(`${u.name} deactivated`);
+    } catch (e) {
+      toast.error(e?.message?.replace(/^API \d+: /, '') || 'Failed to deactivate user');
+    }
+  };
+
+  const handleActivate = async (u) => {
+    try {
+      await api.activateUser(u.id);
+      setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, isActive: true } : x));
+      toast.success(`${u.name} re-activated`);
+    } catch (e) {
+      toast.error(e?.message?.replace(/^API \d+: /, '') || 'Failed to activate user');
+    }
   };
 
   return (
@@ -158,50 +206,77 @@ export default function AdminConsole() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="font-display text-lg font-semibold">Users</h3>
-                  <p className="text-xs text-gray-500">{users.length} active users</p>
+                  <p className="text-xs text-gray-500">{users.length} user{users.length !== 1 ? 's' : ''}</p>
                 </div>
                 <Button size="sm" data-testid="admin-add-user-btn" onClick={() => setShowAddUser(true)} className="bg-red-600 hover:bg-red-700">
                   <Plus className="h-4 w-4 mr-1" /> Add user
                 </Button>
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50 hover:bg-gray-50">
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead className="w-[60px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-7 w-7"><AvatarFallback className="bg-red-600 text-white text-[11px]">{u.avatarInitials}</AvatarFallback></Avatar>
-                          <span className="font-medium">{u.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-gray-600 text-sm font-mono-airtel">{u.email}</TableCell>
-                      <TableCell><Badge className="bg-red-50 text-red-700 hover:bg-red-50">{u.role}</Badge></TableCell>
-                      <TableCell className="text-gray-600 text-sm">{u.department || '—'}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost" size="sm"
-                          data-testid={`admin-remove-user-${u.id}`}
-                          onClick={() => {
-                            setUsers((prev) => prev.filter((x) => x.id !== u.id));
-                            toast.success(`Removed ${u.name}`);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-gray-400" />
-                        </Button>
-                      </TableCell>
+              {usersLoading ? (
+                <p className="text-sm text-gray-400 py-4 text-center">Loading users…</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50 hover:bg-gray-50">
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[80px]"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((u) => (
+                      <TableRow key={u.id} className={!u.isActive ? 'opacity-50' : ''}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-7 w-7">
+                              <AvatarFallback className="bg-red-600 text-white text-[11px]">{u.avatarInitials}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-medium leading-tight">{u.name}</div>
+                              {u.mustChangePassword && (
+                                <div className="text-[10px] text-amber-600 font-medium">Awaiting password setup</div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-gray-600 text-sm font-mono-airtel">{u.email}</TableCell>
+                        <TableCell><Badge className="bg-red-50 text-red-700 hover:bg-red-50">{u.role}</Badge></TableCell>
+                        <TableCell className="text-gray-600 text-sm">{u.department || '—'}</TableCell>
+                        <TableCell>
+                          {u.isActive
+                            ? <span className="text-xs text-green-700 font-medium">Active</span>
+                            : <span className="text-xs text-gray-400 font-medium">Inactive</span>
+                          }
+                        </TableCell>
+                        <TableCell>
+                          {u.isActive ? (
+                            <Button
+                              variant="ghost" size="sm"
+                              data-testid={`admin-deactivate-user-${u.id}`}
+                              title="Deactivate user"
+                              onClick={() => handleDeactivate(u)}
+                            >
+                              <UserX className="h-4 w-4 text-gray-400" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost" size="sm"
+                              data-testid={`admin-activate-user-${u.id}`}
+                              title="Re-activate user"
+                              onClick={() => handleActivate(u)}
+                            >
+                              <UserCheck className="h-4 w-4 text-green-600" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -261,16 +336,18 @@ export default function AdminConsole() {
         <DialogContent data-testid="admin-add-user-dialog">
           <DialogHeader>
             <DialogTitle>Add user</DialogTitle>
-            <DialogDescription>Default password is <code>demo123</code> — change in user settings later.</DialogDescription>
+            <DialogDescription>
+              A temporary password will be generated. Share it with the user — they'll be asked to set a new password on first login.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs font-semibold">Name *</Label>
-              <Input data-testid="admin-new-user-name" value={newUser.name} onChange={(e) => setNewUser((p) => ({ ...p, name: e.target.value }))} className="mt-1" />
+              <Label className="text-xs font-semibold">Full name *</Label>
+              <Input data-testid="admin-new-user-name" value={newUser.name} onChange={(e) => setNewUser((p) => ({ ...p, name: e.target.value }))} className="mt-1" placeholder="e.g. Priya Sharma" />
             </div>
             <div>
-              <Label className="text-xs font-semibold">Email *</Label>
-              <Input data-testid="admin-new-user-email" type="email" value={newUser.email} onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))} className="mt-1" />
+              <Label className="text-xs font-semibold">Work email *</Label>
+              <Input data-testid="admin-new-user-email" type="email" value={newUser.email} onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))} className="mt-1" placeholder="firstname.lastname@airtel.in" />
             </div>
             <div>
               <Label className="text-xs font-semibold">Role</Label>
@@ -283,12 +360,48 @@ export default function AdminConsole() {
             </div>
             <div>
               <Label className="text-xs font-semibold">Department</Label>
-              <Input data-testid="admin-new-user-dept" value={newUser.department} onChange={(e) => setNewUser((p) => ({ ...p, department: e.target.value }))} className="mt-1" />
+              <Input data-testid="admin-new-user-dept" value={newUser.department} onChange={(e) => setNewUser((p) => ({ ...p, department: e.target.value }))} className="mt-1" placeholder="e.g. Procurement Tech" />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowAddUser(false)}>Cancel</Button>
-            <Button data-testid="admin-add-user-submit" onClick={submitNewUser} className="bg-red-600 hover:bg-red-700">Add user</Button>
+            <Button variant="ghost" onClick={() => setShowAddUser(false)} disabled={addingUser}>Cancel</Button>
+            <Button data-testid="admin-add-user-submit" onClick={submitNewUser} disabled={addingUser} className="bg-red-600 hover:bg-red-700">
+              {addingUser ? 'Adding…' : 'Add user'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ----- Temp password reveal dialog ----- */}
+      <Dialog open={!!tempPwInfo} onOpenChange={() => setTempPwInfo(null)}>
+        <DialogContent data-testid="admin-temp-pw-dialog">
+          <DialogHeader>
+            <DialogTitle>User created — share temp password</DialogTitle>
+            <DialogDescription>
+              <strong>{tempPwInfo?.name}</strong> ({tempPwInfo?.email}) has been added. Share the temporary password below securely.
+              They will be prompted to set a new password on their first login.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-between gap-3 border border-gray-200">
+            <code className="text-base font-mono font-semibold tracking-widest text-gray-800 select-all">
+              {tempPwInfo?.tempPassword}
+            </code>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                navigator.clipboard.writeText(tempPwInfo?.tempPassword || '');
+                toast.success('Copied to clipboard');
+              }}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-md p-2 border border-amber-200">
+            This password is shown only once. Copy it now before closing.
+          </p>
+          <DialogFooter>
+            <Button onClick={() => setTempPwInfo(null)} className="bg-red-600 hover:bg-red-700">Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
