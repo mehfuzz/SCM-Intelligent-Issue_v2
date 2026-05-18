@@ -89,13 +89,14 @@ const processRow = (row) => {
   return out;
 };
 
-// Prepare bind values: arrays/objects → JSON strings, booleans → 0/1
+// Prepare bind values: arrays/objects → JSON strings, booleans → 0/1, Dates pass through
 const prepareBinds = (binds) => {
   if (!binds || typeof binds !== 'object') return binds;
   const out = {};
   for (const [k, v] of Object.entries(binds)) {
     if (v === undefined) { out[k] = null; continue; }
     if (typeof v === 'boolean') { out[k] = v ? 1 : 0; continue; }
+    if (v instanceof Date) { out[k] = v; continue; }
     if (Array.isArray(v) || (typeof v === 'object' && v !== null)) {
       out[k] = JSON.stringify(v);
       continue;

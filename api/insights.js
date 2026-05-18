@@ -70,12 +70,10 @@ const runInsights = async () => {
 
   await execute(`UPDATE insights SET superseded = 1 WHERE superseded = 0`, {});
 
-  const run_id      = randomUUID();
-  const generated_at = new Date().toISOString();
+  const run_id = randomUUID();
   const rows = insights.slice(0, 10).map((it) => ({
     id:                   randomUUID(),
     run_id,
-    generated_at,
     category:             String(it.category || 'hotspot').toLowerCase(),
     title:                String(it.title || '').slice(0, 240) || 'Untitled insight',
     body:                 String(it.body || ''),

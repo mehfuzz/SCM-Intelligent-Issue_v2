@@ -58,7 +58,7 @@ async function createTicket(req, res) {
       ...body, id,
       submittedBy:   actor.name,
       submittedById: actor.id,
-      submittedAt:   new Date().toISOString(),
+      submittedAt:   new Date(),
       status: 'Submitted',
       assignedTo: null, assignedToId: null,
     });
