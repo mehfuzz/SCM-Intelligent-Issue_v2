@@ -1,8 +1,14 @@
 // Oracle DB client for Vercel serverless (oracledb 6.x Thin mode — no Oracle Client needed).
 // Thin mode is the default when initOracleClient() is NOT called.
+//
+// Supports mTLS via wallet: set ORACLE_WALLET_PEM (base64 of ewallet.pem)
+// and ORACLE_WALLET_PASSWORD. The PEM is written to /tmp/oracle-wallet/ on
+// first call so the wallet survives within a single serverless invocation.
 
 import oracledb from 'oracledb';
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 export { randomUUID };
 
@@ -10,11 +16,37 @@ export { randomUUID };
 oracledb.fetchAsString = [oracledb.CLOB];
 oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 
-const cfg = () => ({
-  user:          process.env.ORACLE_USER,
-  password:      process.env.ORACLE_PASSWORD,
-  connectString: process.env.ORACLE_CONNECT_STRING,
-});
+// Write ewallet.pem to /tmp once per cold start if ORACLE_WALLET_PEM is set.
+let walletDir = null;
+const ensureWallet = () => {
+  if (walletDir) return walletDir;
+  const b64 = process.env.ORACLE_WALLET_PEM;
+  if (!b64) return null;
+  const dir = '/tmp/oracle-wallet';
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const pemPath = path.join(dir, 'ewallet.pem');
+  if (!fs.existsSync(pemPath)) {
+    fs.writeFileSync(pemPath, Buffer.from(b64, 'base64'));
+  }
+  walletDir = dir;
+  return dir;
+};
+
+const cfg = () => {
+  const base = {
+    user:          process.env.ORACLE_USER,
+    password:      process.env.ORACLE_PASSWORD,
+    connectString: process.env.ORACLE_CONNECT_STRING,
+  };
+  const wallet = ensureWallet();
+  if (wallet) {
+    base.walletLocation = wallet;
+    if (process.env.ORACLE_WALLET_PASSWORD) {
+      base.walletPassword = process.env.ORACLE_WALLET_PASSWORD;
+    }
+  }
+  return base;
+};
 
 export const isConfigured = () =>
   Boolean(process.env.ORACLE_USER && process.env.ORACLE_PASSWORD && process.env.ORACLE_CONNECT_STRING);
