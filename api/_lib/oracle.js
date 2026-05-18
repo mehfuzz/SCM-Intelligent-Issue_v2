@@ -20,7 +20,11 @@ oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 let walletDir = null;
 const ensureWallet = () => {
   if (walletDir) return walletDir;
-  const b64 = process.env.ORACLE_WALLET_PEM;
+  // Support splitting across up to 3 env vars to stay under Vercel's 4096-char limit.
+  const b64 = (process.env.ORACLE_WALLET_PEM_1 || '') +
+              (process.env.ORACLE_WALLET_PEM_2 || '') +
+              (process.env.ORACLE_WALLET_PEM_3 || '') ||
+              process.env.ORACLE_WALLET_PEM || '';
   if (!b64) return null;
   const dir = '/tmp/oracle-wallet';
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
