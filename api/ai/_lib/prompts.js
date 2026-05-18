@@ -163,8 +163,8 @@ Available tools:
 
 Tool-call rules — IMPORTANT:
   * All numeric tool parameters (n, weeks, limit) MUST be JSON numbers,
-    not strings. Send `"n": 5`, never `"n": "5"`.
-  * Only use the enum values listed in each tool's schema for fields like
+    not strings. Send "n": 5, never "n": "5".
+  * Only use the enum values listed in each tool schema for fields like
     priority, status, group_by.
   * Date arguments must be ISO 8601 strings (e.g. "2026-04-01").
 
