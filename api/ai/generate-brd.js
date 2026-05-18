@@ -11,7 +11,7 @@
 // If both providers fail, returns 503 with a clear `attempts` array so the
 // UI can show exactly which provider failed for what reason.
 
-import { supabase, isConfigured as supabaseConfigured } from '../_lib/supabase.js';
+import { query, execute, isConfigured as supabaseConfigured, randomUUID } from '../_lib/oracle.js';
 import { handleOptions, json, readBody, requireUser } from '../_lib/http.js';
 import { rowToTicket } from '../_lib/mappers.js';
 import { generateBrd } from './_lib/llm.js';
@@ -41,12 +41,9 @@ export default async function handler(req, res) {
   let ticket = body?.ticket || null;
   if (supabaseConfigured()) {
     try {
-      const { data, error } = await supabase()
-        .from('tickets').select('*').eq('id', ticketId).single();
-      if (error) {
-        return json(res, 404, { error: `Ticket not found: ${error.message}` });
-      }
-      ticket = rowToTicket(data);
+      const rows = await query(`SELECT * FROM tickets WHERE id = :id`, { id: ticketId });
+      if (!rows.length) return json(res, 404, { error: 'Ticket not found' });
+      ticket = rowToTicket(rows[0]);
     } catch (e) {
       return json(res, 500, { error: `Failed to load ticket: ${e?.message || e}` });
     }
@@ -83,17 +80,16 @@ export default async function handler(req, res) {
   const generatedAt = new Date().toISOString();
   if (supabaseConfigured()) {
     try {
-      await supabase().from('audit_log').insert({
-        ticket_id:  ticketId,
-        at:         generatedAt,
-        actor_id:   actor.id,
-        actor_name: actor.name || 'AI request',
-        action:     'AI BRD draft generated',
-        field:      'BRD',
-        before_val: null,
-        after_val:  `${result.provider}:${result.model}${result.fallbackUsed ? ' (fallback)' : ''}`,
-        note:       'Auto-drafted via /api/ai/generate-brd',
-      });
+      await execute(
+        `INSERT INTO audit_log (id, ticket_id, actor_id, actor_name, action, field, after_val, note)
+         VALUES (:id, :ticket_id, :actor_id, :actor_name, :action, :field, :after_val, :note)`,
+        {
+          id: randomUUID(), ticket_id: ticketId, actor_id: actor.id || null,
+          actor_name: actor.name || 'AI request', action: 'AI BRD draft generated', field: 'BRD',
+          after_val: `${result.provider}:${result.model}${result.fallbackUsed ? ' (fallback)' : ''}`,
+          note: 'Auto-drafted via /api/ai/generate-brd',
+        }
+      );
     } catch (e) {
       // Don't fail the request if audit insert fails — log and continue.
       console.warn('[generate-brd] audit insert failed:', e?.message || e);

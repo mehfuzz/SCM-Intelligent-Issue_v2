@@ -1,5 +1,5 @@
-// Map Supabase rows ↔ frontend ticket shape so the React app keeps the same
-// nested structure (impact, sla, scores, …) it had with mock data.
+// Map Oracle rows ↔ frontend ticket shape.
+// oracle.js normalises all column names to lowercase, so r.function works as expected.
 
 export const rowToTicket = (r) => ({
   id: r.id,
