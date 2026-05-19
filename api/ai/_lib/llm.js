@@ -1,16 +1,8 @@
-// LLM orchestrator.
-//
-// Tries Groq first; on retryable failure (429 / 5xx / network / non-JSON),
-// falls back to Gemini. If both are unavailable, throws a clear error —
-// never silently returns a worse-quality output the caller didn't pick.
+// LLM orchestrator — uses Gemini only.
 
-import * as groq   from './providers/groq.js';
 import * as gemini from './providers/gemini.js';
 import { BRD_SECTION_KEYS } from './prompts.js';
 
-// Hard per-provider timeout. Vercel free-tier serverless functions have a
-// 10s budget; setting each call to 8s leaves room for sequential fallback
-// on Pro plans (60s budget) without giving up too quickly on free.
 const TIMEOUT_MS = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 8000);
 
 const withTimeout = (fn, ms) => {
@@ -100,46 +92,32 @@ const validateSections = (sections) => {
 };
 
 export const generateBrd = async ({ systemPrompt, userPrompt }) => {
-  const attempts = [];
-
-  const tryProvider = async (name, mod) => {
-    if (!mod.isConfigured()) {
-      attempts.push({ provider: name, message: `${name.toUpperCase()}_API_KEY not set`, retryable: true });
-      return null;
-    }
-    try {
-      const out = await withTimeout(
-        (signal) => mod.generate({ systemPrompt, userPrompt, signal }),
-        TIMEOUT_MS,
+  if (!gemini.isConfigured()) {
+    const err = new Error('All AI providers failed');
+    err.code = 'AI_ALL_PROVIDERS_FAILED';
+    err.attempts = [{ provider: 'gemini', message: 'GEMINI_API_KEY not set', retryable: true }];
+    throw err;
+  }
+  try {
+    const out = await withTimeout(
+      (signal) => gemini.generate({ systemPrompt, userPrompt, signal }),
+      TIMEOUT_MS,
+    );
+    const normalised = normaliseSections(out.sections);
+    const invalid = validateSections(normalised);
+    if (invalid) {
+      const presentKeys = Object.keys(out.sections || {});
+      throw new gemini.ProviderError(
+        `gemini output invalid: ${invalid}. Keys present: [${presentKeys.join(', ')}]`,
+        { retryable: false },
       );
-      const normalised = normaliseSections(out.sections);
-      const invalid = validateSections(normalised);
-      if (invalid) {
-        // Surface which keys WERE present so the next debug round is easier.
-        const presentKeys = Object.keys(out.sections || {});
-        throw new mod.ProviderError(
-          `${name} output invalid: ${invalid}. Keys present: [${presentKeys.join(', ')}]`,
-          { retryable: true },
-        );
-      }
-      return { provider: name, model: out.model, sections: normalised };
-    } catch (e) {
-      attempts.push({ provider: name, message: e.message, retryable: !!e.retryable });
-      return null;
     }
-  };
-
-  // 1. Try Groq.
-  const groqResult = await tryProvider('groq', groq);
-  if (groqResult) return { ...groqResult, fallbackUsed: false };
-
-  // 2. Try Gemini.
-  const geminiResult = await tryProvider('gemini', gemini);
-  if (geminiResult) return { ...geminiResult, fallbackUsed: groq.isConfigured() };
-
-  // Both providers failed.
-  const err = new Error('All AI providers failed');
-  err.code = 'AI_ALL_PROVIDERS_FAILED';
-  err.attempts = attempts;
-  throw err;
+    return { provider: 'gemini', model: out.model, sections: normalised, fallbackUsed: false };
+  } catch (e) {
+    if (e.code === 'AI_ALL_PROVIDERS_FAILED') throw e;
+    const err = new Error('All AI providers failed');
+    err.code = 'AI_ALL_PROVIDERS_FAILED';
+    err.attempts = [{ provider: 'gemini', message: e.message, retryable: !!e.retryable }];
+    throw err;
+  }
 };
