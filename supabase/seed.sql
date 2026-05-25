@@ -4,16 +4,16 @@
 -- ----------------------------------------------------------------------------
 -- Users
 -- ----------------------------------------------------------------------------
-insert into app_users (id, name, email, password, role, department, avatar_initials) values
-  ('u1','Ravi Kumar',      'ravi.kumar@airtel.in',   'demo123','Submitter',    'SCM Operations',           'RK'),
-  ('u2','Priya Sharma',    'priya.sharma@airtel.in', 'demo123','COE Admin',    'SCM Center of Excellence', 'PS'),
-  ('u3','Amit Singh',      'amit.singh@airtel.in',   'demo123','POC Owner',    'Procurement Tech',         'AS'),
-  ('u4','Neeta Rao',       'neeta.rao@airtel.in',    'demo123','Leadership',   'SCM Leadership',           'NR'),
-  ('u5','System Admin',    'admin@airtel.in',        'demo123','System Admin', 'IT Platform',              'SA'),
-  ('u6','Kushal Soni',     'kushal.soni@airtel.in',  'demo123','POC Owner',    'SCM CoE',                  'KS'),
-  ('u7','Shikha Aggarwal', 'shikha@airtel.in',       'demo123','POC Owner',    'SCM CoE',                  'SA'),
-  ('u8','Rajesh Kansal',   'rajesh.kansal@airtel.in','demo123','Submitter',    'Infra Procurement',        'RK'),
-  ('u9','Akram Raza',      'akram.raza@airtel.in',   'demo123','Submitter',    'Material Management',      'AR')
+insert into app_users (id, name, email, password_hash, must_change_password, role, department, avatar_initials) values
+  ('u1','Ravi Kumar',      'ravi.kumar@airtel.in',   crypt('demo123', gen_salt('bf', 10)), false,'Submitter',    'SCM Operations',           'RK'),
+  ('u2','Priya Sharma',    'priya.sharma@airtel.in', crypt('demo123', gen_salt('bf', 10)), false,'COE Admin',    'SCM Center of Excellence', 'PS'),
+  ('u3','Amit Singh',      'amit.singh@airtel.in',   crypt('demo123', gen_salt('bf', 10)), false,'POC Owner',    'Procurement Tech',         'AS'),
+  ('u4','Neeta Rao',       'neeta.rao@airtel.in',    crypt('demo123', gen_salt('bf', 10)), false,'Leadership',   'SCM Leadership',           'NR'),
+  ('u5','System Admin',    'admin@airtel.in',        crypt('demo123', gen_salt('bf', 10)), false,'System Admin', 'IT Platform',              'SA'),
+  ('u6','Kushal Soni',     'kushal.soni@airtel.in',  crypt('demo123', gen_salt('bf', 10)), false,'POC Owner',    'SCM CoE',                  'KS'),
+  ('u7','Shikha Aggarwal', 'shikha@airtel.in',       crypt('demo123', gen_salt('bf', 10)), false,'POC Owner',    'SCM CoE',                  'SA'),
+  ('u8','Rajesh Kansal',   'rajesh.kansal@airtel.in',crypt('demo123', gen_salt('bf', 10)), false,'Submitter',    'Infra Procurement',        'RK'),
+  ('u9','Akram Raza',      'akram.raza@airtel.in',   crypt('demo123', gen_salt('bf', 10)), false,'Submitter',    'Material Management',      'AR')
 on conflict (id) do nothing;
 
 -- ----------------------------------------------------------------------------

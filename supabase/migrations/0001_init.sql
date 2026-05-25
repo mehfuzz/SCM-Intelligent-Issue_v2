@@ -53,17 +53,19 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 -- ============================================================================
--- Users (mock login — no Supabase Auth, kept as a plain table)
+-- Users
 -- ============================================================================
 create table if not exists app_users (
-  id              text primary key,
-  name            text not null,
-  email           text not null unique,
-  password        text not null,            -- plain for mock parity; do not use in production
-  role            user_role not null,
-  department      text,
-  avatar_initials text,
-  created_at      timestamptz default now()
+  id                    text primary key,
+  name                  text not null,
+  email                 text not null unique,
+  password_hash         text not null,
+  must_change_password  boolean default false,
+  is_active             boolean default true,
+  role                  user_role not null,
+  department            text,
+  avatar_initials       text,
+  created_at            timestamptz default now()
 );
 
 -- ============================================================================

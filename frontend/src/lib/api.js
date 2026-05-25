@@ -39,11 +39,25 @@ export const api = {
   health: () => request('/health'),
 
   // Auth
-  // Login is the only POST to /api/users — the handler discriminates by
-  // whether the body has { email, password } or not.
   login: (email, password) => request('/users', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ action: 'login', email, password }),
+  }),
+  createUser: (payload) => request('/users', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'create_user', ...payload }),
+  }),
+  changePassword: (userId, currentPassword, newPassword) => request('/users', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'change_password', userId, currentPassword, newPassword }),
+  }),
+  deactivateUser: (userId) => request('/users', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'deactivate_user', userId }),
+  }),
+  activateUser: (userId) => request('/users', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'activate_user', userId }),
   }),
 
   // Tickets

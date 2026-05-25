@@ -1,11 +1,10 @@
-// Leadership chat API — merged with chat-sessions to stay under Vercel
-// Hobby's 12-function cap.
+// Leadership chat API — sessions list, messages, and chat turns.
 //
 //   GET  /api/ai/leadership-chat                       → list this user's sessions
 //   GET  /api/ai/leadership-chat?session_id=<uuid>     → messages for that session
 //   POST /api/ai/leadership-chat                       → { session_id?, message } → reply
 
-import { supabase, isConfigured } from '../_lib/supabase.js';
+import { query, execute, isConfigured, randomUUID } from '../_lib/oracle.js';
 import { handleOptions, json, readBody, requireUser } from '../_lib/http.js';
 import { chatComplete } from './_lib/chat-orchestrator.js';
 import { CHAT_SYSTEM_PROMPT } from './_lib/prompts.js';
@@ -13,12 +12,12 @@ import { CHAT_SYSTEM_PROMPT } from './_lib/prompts.js';
 export const config = { maxDuration: 45 };
 
 const loadHistory = async (sessionId) => {
-  const { data, error } = await supabase()
-    .from('chat_messages').select('*')
-    .eq('session_id', sessionId).order('at', { ascending: true });
-  if (error) throw new Error(`load history: ${error.message}`);
+  const data = await query(
+    `SELECT * FROM chat_messages WHERE session_id = :sid ORDER BY at ASC`,
+    { sid: sessionId }
+  );
   const msgs = [];
-  for (const r of (data || [])) {
+  for (const r of data) {
     if (r.role === 'tool') {
       msgs.push({ role: 'tool', tool_call_id: r.tool_name + ':' + r.id, name: r.tool_name, content: JSON.stringify(r.tool_result || {}) });
     } else if (r.role === 'assistant' && Array.isArray(r.tool_calls) && r.tool_calls.length) {
@@ -32,29 +31,35 @@ const loadHistory = async (sessionId) => {
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
-  if (!isConfigured()) return json(res, 500, { error: 'Supabase env vars not configured' });
+  if (!isConfigured()) return json(res, 500, { error: 'Oracle env vars not configured' });
 
-  // --- GET: sessions list or one session's messages ---
   if (req.method === 'GET') {
     const actor = requireUser(req);
     const { session_id } = req.query;
-    if (session_id) {
-      const { data, error } = await supabase()
-        .from('chat_messages').select('*')
-        .eq('session_id', session_id).order('at', { ascending: true });
-      if (error) return json(res, 500, { error: error.message });
-      return json(res, 200, data || []);
+    try {
+      if (session_id) {
+        const rows = await query(
+          `SELECT * FROM chat_messages WHERE session_id = :sid ORDER BY at ASC`,
+          { sid: session_id }
+        );
+        return json(res, 200, rows);
+      }
+      const rows = actor.id
+        ? await query(
+            `SELECT * FROM chat_sessions WHERE user_id = :uid ORDER BY updated_at DESC FETCH FIRST 50 ROWS ONLY`,
+            { uid: actor.id }
+          )
+        : await query(
+            `SELECT * FROM chat_sessions ORDER BY updated_at DESC FETCH FIRST 50 ROWS ONLY`, {}
+          );
+      return json(res, 200, rows);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
     }
-    let q = supabase().from('chat_sessions').select('*').order('updated_at', { ascending: false }).limit(50);
-    if (actor.id) q = q.eq('user_id', actor.id);
-    const { data, error } = await q;
-    if (error) return json(res, 500, { error: error.message });
-    return json(res, 200, data || []);
   }
 
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
 
-  // --- POST: chat turn ---
   const actor = requireUser(req);
   let body;
   try { body = await readBody(req); }
@@ -62,59 +67,62 @@ export default async function handler(req, res) {
   const userText = String(body?.message || '').trim();
   if (!userText) return json(res, 400, { error: 'message required' });
 
-  let sessionId = body?.session_id || null;
-  if (!sessionId) {
-    const { data, error } = await supabase().from('chat_sessions').insert({
-      user_id: actor.id,
-      title:   userText.slice(0, 80),
-    }).select().single();
-    if (error) return json(res, 500, { error: `create session: ${error.message}` });
-    sessionId = data.id;
-  }
-
-  await supabase().from('chat_messages').insert({
-    session_id: sessionId, role: 'user', content: userText,
-  });
-
-  let history;
-  try { history = await loadHistory(sessionId); }
-  catch (e) { return json(res, 500, { error: e.message }); }
-  const messages = [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...history];
-
-  let out;
-  try { out = await chatComplete({ messages }); }
-  catch (e) {
-    if (e?.code === 'AI_ALL_PROVIDERS_FAILED') {
-      return json(res, 503, { session_id: sessionId, error: 'AI providers unavailable', attempts: e.attempts });
+  try {
+    let sessionId = body?.session_id || null;
+    if (!sessionId) {
+      sessionId = randomUUID();
+      await execute(
+        `INSERT INTO chat_sessions (id, user_id, title) VALUES (:id, :user_id, :title)`,
+        { id: sessionId, user_id: actor.id || null, title: userText.slice(0, 80) }
+      );
     }
-    return json(res, 500, { session_id: sessionId, error: e?.message || String(e) });
-  }
 
-  for (const t of out.toolTrace) {
-    await supabase().from('chat_messages').insert({
+    await execute(
+      `INSERT INTO chat_messages (id, session_id, role, content) VALUES (:id, :sid, :role, :content)`,
+      { id: randomUUID(), sid: sessionId, role: 'user', content: userText }
+    );
+
+    const history = await loadHistory(sessionId);
+    const messages = [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...history];
+
+    let out;
+    try { out = await chatComplete({ messages }); }
+    catch (e) {
+      if (e?.code === 'AI_ALL_PROVIDERS_FAILED')
+        return json(res, 503, { session_id: sessionId, error: 'AI providers unavailable', attempts: e.attempts });
+      return json(res, 500, { session_id: sessionId, error: e?.message || String(e) });
+    }
+
+    for (const t of out.toolTrace) {
+      await execute(
+        `INSERT INTO chat_messages (id, session_id, role, tool_name, tool_args, tool_result, provider, model)
+         VALUES (:id, :sid, :role, :tool_name, :tool_args, :tool_result, :provider, :model)`,
+        {
+          id: randomUUID(), sid: sessionId, role: 'tool',
+          tool_name: t.name, tool_args: JSON.stringify(t.args), tool_result: JSON.stringify(t.result),
+          provider: out.provider, model: out.model,
+        }
+      );
+    }
+    await execute(
+      `INSERT INTO chat_messages (id, session_id, role, content, tool_calls, provider, model)
+       VALUES (:id, :sid, :role, :content, :tool_calls, :provider, :model)`,
+      {
+        id: randomUUID(), sid: sessionId, role: 'assistant',
+        content: out.message?.content || '',
+        tool_calls: JSON.stringify(Array.isArray(out.message?.tool_calls) ? out.message.tool_calls : []),
+        provider: out.provider, model: out.model,
+      }
+    );
+
+    return json(res, 200, {
       session_id: sessionId,
-      role:       'tool',
-      tool_name:  t.name,
-      tool_args:  t.args,
-      tool_result: t.result,
+      reply:      out.message?.content || '',
+      toolTrace:  out.toolTrace,
       provider:   out.provider,
       model:      out.model,
     });
+  } catch (e) {
+    return json(res, 500, { error: e.message });
   }
-  await supabase().from('chat_messages').insert({
-    session_id: sessionId,
-    role:       'assistant',
-    content:    out.message?.content || '',
-    tool_calls: Array.isArray(out.message?.tool_calls) ? out.message.tool_calls : [],
-    provider:   out.provider,
-    model:      out.model,
-  });
-
-  return json(res, 200, {
-    session_id: sessionId,
-    reply:      out.message?.content || '',
-    toolTrace:  out.toolTrace,
-    provider:   out.provider,
-    model:      out.model,
-  });
 }
