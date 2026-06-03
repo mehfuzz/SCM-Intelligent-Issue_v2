@@ -66,9 +66,14 @@ export default function IssueSubmission() {
 
   const goNext = () => {
     if (step === 1) {
-      if (!form.title.trim()) { toast.error('Title is required'); return; }
-      if (!form.module)       { toast.error('Module is required'); return; }
-      if (!form.category)     { toast.error('Category is required'); return; }
+      if (!form.title.trim())             { toast.error('Title is required'); return; }
+      if (!form.module)                   { toast.error('Module is required'); return; }
+      if (!form.category)                 { toast.error('Category is required'); return; }
+      if (!form.description.trim() ||
+          form.description.trim().length < 20) {
+        toast.error('Description is required (minimum 20 characters — give the COE enough context to triage).');
+        return;
+      }
       if (similarTickets.length > 0) { setShowSimilar(true); return; }
     }
     if (step === 2) {
@@ -246,15 +251,22 @@ export default function IssueSubmission() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs font-semibold">Description</Label>
+                <Label className="text-xs font-semibold">Description *</Label>
                 <Textarea
                   data-testid="form-description-input"
                   value={form.description}
                   onChange={(e) => set('description', e.target.value)}
                   rows={4}
-                  placeholder="What is happening? Impact? Steps to reproduce…"
+                  placeholder="What is happening? Impact? Steps to reproduce… (minimum 20 characters)"
                   className="mt-1"
                 />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  {form.description.trim().length === 0
+                    ? 'Required — used by AI dedup, BRD drafting and COE triage.'
+                    : form.description.trim().length < 20
+                      ? `${20 - form.description.trim().length} more characters needed.`
+                      : `${form.description.trim().length} characters ✓`}
+                </p>
               </div>
             </div>
           )}

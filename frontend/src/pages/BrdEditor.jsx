@@ -2,6 +2,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
+import { isLiveApi } from '../lib/hydrate';
 import { notify } from '../lib/notify';
 import { MOCK_BRDS, MOCK_TICKETS, ROLES, formatDateTime, relativeTime } from '../data/mockData';
 import { canViewBrd } from '../lib/access';
@@ -87,6 +88,9 @@ export default function BrdEditor() {
   const [aiError, setAiError] = useState(null);
   // Guards against re-firing the auto-generation on hot reloads / re-renders.
   const autoFiredRef = useRef(false);
+  const hydratedRef  = useRef(false);  // guards the initial DB fetch
+  const [hydrating, setHydrating] = useState(false);
+  const [saving, setSaving]       = useState(false);
 
   const canEdit = user && (
     user.role === ROLES.POC_OWNER ||
@@ -111,6 +115,67 @@ export default function BrdEditor() {
   };
 
   // ──────────────────────────────────────────────────────────────────────
+  // Persistence — every save (AI gen, manual Save Draft, Approve) flows
+  // through here so the BRD lives in Supabase, not just the local tab.
+  // In demo mode we silently no-op so the UI still works without a backend.
+  // ──────────────────────────────────────────────────────────────────────
+  const persistBrd = async (next, { auditAction, auditNote } = {}) => {
+    if (!isLiveApi() || !next?.ticketId) return null;
+    try {
+      const saved = await api.saveBrd({
+        id:        next.id,
+        ticketId:  next.ticketId,
+        title:     next.title,
+        status:    next.status,
+        version:   next.version,
+        sections:  next.sections || {},
+        versions:  next.versions || [],
+        auditAction,
+        auditNote,
+      });
+      return saved;
+    } catch (e) {
+      console.warn('[brd] persistBrd failed:', e?.message || e);
+      toast.error(`Could not save to server: ${e?.message || 'API error'}`);
+      return null;
+    }
+  };
+
+  // On mount: try to hydrate from the brds table. Three lookup paths:
+  //   1. /brd/<id>            → fetch by id
+  //   2. /brd?ticket=SCM-XYZ  → fetch by ticket_id
+  // If nothing exists yet, keep the locally-derived initialBrd (which will
+  // either be a saved template or a draft skeleton from the ticket).
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    if (!isLiveApi()) return;
+    const ticketParam = searchParams.get('ticket');
+    const target = id || ticketParam ? (id ? { kind: 'id', key: id } : { kind: 'ticket', key: ticketParam }) : null;
+    if (!target) return;
+    let cancelled = false;
+    setHydrating(true);
+    const fetcher = target.kind === 'id' ? api.getBrdById(target.key) : api.getBrdByTicket(target.key);
+    fetcher
+      .then((row) => {
+        if (cancelled || !row) return;
+        setBrd((p) => ({
+          ...p,
+          id:        row.id || p.id,
+          ticketId:  row.ticketId || p.ticketId,
+          title:     row.title || p.title,
+          status:    row.status || p.status,
+          version:   row.version || p.version,
+          sections:  row.sections && Object.keys(row.sections).length ? row.sections : p.sections,
+          versions:  Array.isArray(row.versions) && row.versions.length ? row.versions : p.versions,
+        }));
+      })
+      .catch((e) => console.warn('[brd] hydrate failed:', e?.message || e))
+      .finally(() => { if (!cancelled) setHydrating(false); });
+    return () => { cancelled = true; };
+  }, [id, searchParams]);
+
+  // ──────────────────────────────────────────────────────────────────────
   // AI: Generate full draft (Groq → Gemini fallback).
   // The endpoint loads the ticket server-side so we send minimal payload —
   // unless we're in demo mode (Supabase not configured), in which case we
@@ -126,28 +191,37 @@ export default function BrdEditor() {
     try {
       const linked = MOCK_TICKETS.find((t) => t.id === brd.ticketId) || null;
       const res = await api.generateBrd(brd.ticketId, linked);
-      // Populate every section the model returned. If the model skipped a
-      // key, leave the existing draft value in place rather than blanking
-      // it — gives the POC something to keep editing.
-      setBrd((p) => ({
-        ...p,
-        sections: { ...p.sections, ...res.sections },
+
+      // Build the next BRD state once so we can both render and persist it.
+      const versionStamp = res.meta?.at || new Date().toISOString();
+      const versionAuthor = `AI · ${res.meta?.provider}:${res.meta?.model}${res.meta?.fallbackUsed ? ' (fallback)' : ''}`;
+      const next = {
+        ...brd,
+        sections: { ...brd.sections, ...res.sections },
         status: 'Draft (AI-generated)',
         versions: [
-          { v: bumpVersion(p.version), at: res.meta?.at || new Date().toISOString(),
-            by: `AI · ${res.meta?.provider}:${res.meta?.model}${res.meta?.fallbackUsed ? ' (fallback)' : ''}` },
-          ...(p.versions || []),
+          { v: bumpVersion(brd.version), at: versionStamp, by: versionAuthor },
+          ...(brd.versions || []),
         ],
-        version: bumpVersion(p.version),
-      }));
+        version: bumpVersion(brd.version),
+      };
+      setBrd(next);
       setAiMeta(res.meta || null);
       logAudit(
         'AI draft generated',
         `${res.meta?.provider}:${res.meta?.model}${res.meta?.fallbackUsed ? ' (fallback)' : ''} · ${
-          res.meta?.at ? new Date(res.meta.at).toLocaleString('en-IN') : ''
+          versionStamp ? new Date(versionStamp).toLocaleString('en-IN') : ''
         }`,
       );
-      toast.success(`BRD draft generated via ${res.meta?.provider}`);
+
+      // Persist immediately so COE/POC see the AI-generated content even
+      // if the submitter just closes the tab.
+      const saved = await persistBrd(next, {
+        auditAction: 'AI BRD draft saved',
+        auditNote:   versionAuthor,
+      });
+      if (saved) toast.success(`BRD draft saved (${res.meta?.provider})`);
+      else       toast.success(`BRD draft generated via ${res.meta?.provider}`);
     } catch (e) {
       // The endpoint surfaces structured attempts on 503. Show whichever
       // reason is most concrete.
@@ -175,23 +249,31 @@ export default function BrdEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brd?.ticketId, searchParams]);
 
-  const onSaveDraft = () => {
+  const onSaveDraft = async () => {
     const newV = bumpVersion(brd.version);
-    setBrd((p) => ({
-      ...p, version: newV,
-      versions: [{ v: newV, at: new Date().toISOString(), by: user?.name || 'You' }, ...(p.versions || [])],
-    }));
+    const next = {
+      ...brd,
+      version: newV,
+      versions: [{ v: newV, at: new Date().toISOString(), by: user?.name || 'You' }, ...(brd.versions || [])],
+    };
+    setBrd(next);
     logAudit('Draft saved', `Version → ${newV}`);
-    toast.success(`BRD saved as ${newV}`);
+    setSaving(true);
+    const saved = await persistBrd(next, { auditAction: 'BRD draft saved by user' });
+    setSaving(false);
+    if (saved) toast.success(`BRD saved as ${newV}`);
+    else if (!isLiveApi()) toast.warning(`Saved locally as ${newV} — connect Supabase to persist.`);
   };
 
   const linkedTicket = brd?.ticketId ? MOCK_TICKETS.find((t) => t.id === brd.ticketId) : null;
 
-  const onApprove = () => {
-    setBrd((p) => ({ ...p, status: 'Approved' }));
+  const onApprove = async () => {
+    const next = { ...brd, status: 'Approved' };
+    setBrd(next);
     logAudit('Approved', `By ${user?.name}`);
     toast.success('BRD approved');
     if (linkedTicket) notify.brdApproved(linkedTicket, user?.name || 'POC');
+    await persistBrd(next, { auditAction: 'BRD approved', auditNote: `By ${user?.name}` });
   };
 
   const onRequestEdits = () => {
@@ -299,8 +381,10 @@ export default function BrdEditor() {
             </Button>
           )}
           {canEdit && (
-            <Button variant="outline" data-testid="brd-save-btn" onClick={onSaveDraft}>
-              <Save className="h-4 w-4 mr-1" /> Save draft
+            <Button variant="outline" data-testid="brd-save-btn" onClick={onSaveDraft} disabled={saving}>
+              {saving
+                ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Saving…</>
+                : <><Save className="h-4 w-4 mr-1" /> Save draft</>}
             </Button>
           )}
           {user?.role !== ROLES.SUBMITTER && (

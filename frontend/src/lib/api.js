@@ -103,6 +103,12 @@ export const api = {
     body: JSON.stringify({ ticketId, ticket }),
   }),
 
+  // BRD persistence (role-scoped server-side; only allowed users see / save)
+  listBrds:        ()                   => request('/brds'),
+  getBrdById:      (id)                 => request(`/brds?id=${encodeURIComponent(id)}`),
+  getBrdByTicket:  (ticketId)           => request(`/brds?ticket_id=${encodeURIComponent(ticketId)}`),
+  saveBrd:         (payload)            => request('/brds', { method: 'POST', body: JSON.stringify(payload) }),
+
   // Insights (Feature 1)
   listInsights:        ()           => request('/insights'),
   refreshInsights:     ()           => request('/insights', { method: 'POST', body: JSON.stringify({ action: 'refresh' }) }),
